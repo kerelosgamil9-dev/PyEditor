@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PYVORA</title>
+<style>
+:root{--bg:#1e1e1e;--bar:#252526;--fg:#d4d4d4;--mut:#858585;--sel:#264f78;--ac:#0e639c}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%;padding-top:env(safe-area-inset-top)}
+.bar,.keys,#tabs,.wrap{direction:ltr}
+.bar{display:flex;align-items:center;background:var(--bar);gap:2px;padding:4px;overflow-x:auto}
+.bar button,.keys button{flex:none;background:none;border:0;color:var(--fg);font-size:18px;min-width:40px;height:40px;border-radius:6px}
+.bar button:active,.keys button:active{background:var(--sel)}
+.bar .run{background:var(--ac);color:#fff;margin-right:6px}
+#tabs{display:flex;overflow-x:auto;background:var(--bar);border-top:1px solid #0003}
+.tab{padding:8px 12px;white-space:nowrap;color:var(--mut);font-size:14px;display:flex;gap:8px;align-items:center;border-bottom:2px solid transparent}
+.tab.on{color:var(--fg);border-bottom-color:var(--ac);background:var(--bg)}
+.tab b{font-weight:400;opacity:.6;padding:0 4px}
+.wrap{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+.cell{display:grid;grid-template-columns:minmax(0,1fr);min-height:100%;--gw:2ch}
+.cm{font:var(--fs,15px)/1.55 "Roboto Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;tab-size:4;margin:0;padding:8px 14px 120px calc(var(--gw) + 24px);grid-area:1/1;min-width:0;letter-spacing:0}
+#hl{pointer-events:none;position:relative;z-index:2;color:var(--fg);counter-reset:ln}
+.l{position:relative}
+.l::before{counter-increment:ln;content:counter(ln);position:absolute;top:0;left:calc(-1*(var(--gw) + 14px));width:var(--gw);text-align:right;color:var(--mut);-webkit-user-select:none}
+#ed{position:relative;z-index:1;background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--fg);border:0;outline:0;resize:none;overflow:hidden;width:100%}
+#ed::selection{background:var(--sel);-webkit-text-fill-color:transparent}
+.kw{color:var(--kw)}.bi{color:var(--bi)}.st{color:var(--st)}.nu{color:var(--nu)}.cm_{color:var(--cm);font-style:italic}.fn{color:var(--fn)}.cl{color:var(--cl)}.dc{color:var(--dc)}.cn{color:var(--cn)}.sf{color:var(--sf)}.op{color:var(--op)}
+.keys{display:flex;overflow-x:auto;background:var(--bar);border-top:1px solid #0003}
+.keys button{font:16px ui-monospace,monospace;min-width:40px}
+#modal{display:none;position:fixed;inset:0;background:#0008;z-index:9;align-items:center;justify-content:center}
+#modal.show{display:flex}
+.box{background:var(--bar);border-radius:12px;padding:16px;width:min(90%,360px)}
+.box label{display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-size:15px}
+.box select,.box input[type=number]{background:var(--bg);color:var(--fg);border:1px solid #8886;border-radius:6px;padding:6px;font-size:15px}
+#toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#000c;color:#fff;padding:8px 16px;border-radius:20px;display:none;z-index:10;font-size:14px}
+</style></head><body>
+<div id="app">
+ <div class="bar">
+  <button class="run" id="bRun">▶</button>
+  <button id="bNew">＋</button><button id="bOpen">📂</button><button id="bSave">💾</button>
+  <button id="bUndo">↶</button><button id="bRedo">↷</button>
+  <button id="bTerm">⌨</button><button id="bPip">📦</button><button id="bSet">⚙</button>
+ </div>
+ <div id="tabs"></div>
+ <div class="wrap"><div class="cell" id="cell"><pre id="hl" class="cm"></pre><textarea id="ed" class="cm" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" dir="ltr"></textarea></div></div>
+ <div class="keys" id="keys"></div>
+</div>
+<div id="modal"><div class="box">
+ <h3 id="sTitle" style="margin:0 0 6px"></h3>
+ <label><span id="sLang"></span><select id="oLang"><option value="ar">العربية</option><option value="en">English</option></select></label>
+ <label><span id="sTheme"></span><select id="oTheme"></select></label>
+ <label><span id="sSize"></span><input type="number" id="oSize" min="10" max="30" style="width:70px"></label>
+ <label><span id="sAuto"></span><input type="checkbox" id="oAuto"></label>
+ <button id="sOk" style="width:100%;margin-top:8px;padding:10px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:16px"></button>
+</div></div>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+const I18N={en:{set:"Settings",lang:"Language",theme:"Color theme",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app"},
+ar:{set:"الإعدادات",lang:"اللغة",theme:"ألوان الكود",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس"}};
+/* themes: bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op */
+const VARS="bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op".split(" ");
+const TH={
+"Dark+":"#1e1e1e #252526 #d4d4d4 #858585 #264f78 #0e639c #c586c0 #4fc1ff #ce9178 #b5cea8 #6a9955 #dcdcaa #4ec9b0 #dcdcaa #569cd6 #9cdcfe #d4d4d4",
+"Monokai":"#272822 #1e1f1c #f8f8f2 #75715e #49483e #3e7d1f #f92672 #66d9ef #e6db74 #ae81ff #75715e #a6e22e #a6e22e #a6e22e #ae81ff #fd971f #f92672",
+"Dracula":"#282a36 #21222c #f8f8f2 #6272a4 #44475a #6d4fc2 #ff79c6 #8be9fd #f1fa8c #bd93f9 #6272a4 #50fa7b #8be9fd #50fa7b #bd93f9 #ffb86c #ff79c6",
+"One Dark":"#282c34 #21252b #abb2bf #5c6370 #3e4451 #2d6fb5 #c678dd #56b6c2 #98c379 #d19a66 #5c6370 #61afef #e5c07b #e5c07b #d19a66 #e06c75 #56b6c2",
+"Tokyo Night":"#1a1b26 #16161e #c0caf5 #565f89 #33467c #3d59a1 #bb9af7 #7dcfff #9ece6a #ff9e64 #565f89 #7aa2f7 #e0af68 #7dcfff #ff9e64 #f7768e #89ddff",
+"Nord":"#2e3440 #272c36 #d8dee9 #616e88 #434c5e #5e81ac #81a1c1 #88c0d0 #a3be8c #b48ead #616e88 #88c0d0 #8fbcbb #d08770 #81a1c1 #d8dee9 #81a1c1",
+"Gruvbox":"#282828 #1d2021 #ebdbb2 #928374 #504945 #98711a #fb4934 #fabd2f #b8bb26 #d3869b #928374 #8ec07c #fabd2f #fe8019 #d3869b #83a598 #fe8019",
+"Solarized Dark":"#002b36 #073642 #93a1a1 #586e75 #0a4a5a #268bd2 #859900 #268bd2 #2aa198 #d33682 #586e75 #b58900 #cb4b16 #6c71c4 #cb4b16 #268bd2 #859900",
+"Night Owl":"#011627 #01111d #d6deeb #637777 #1d3b53 #1d6fb8 #c792ea #82aaff #ecc48d #f78c6c #637777 #82aaff #ffcb8b #addb67 #ff5874 #7fdbca #c792ea",
+"AMOLED":"#000000 #0a0a0a #e6e6e6 #6b6b6b #2a2a2a #0e639c #ff7b72 #79c0ff #a5d6ff #79c0ff #8b949e #d2a8ff #ffa657 #d2a8ff #79c0ff #ffa657 #ff7b72",
+"Light+":"#ffffff #f3f3f3 #1f1f1f #999999 #add6ff #0e639c #af00db #795e26 #a31515 #098658 #008000 #795e26 #267f99 #0070c1 #0000ff #001080 #1f1f1f",
+"GitHub Light":"#ffffff #f6f8fa #24292f #8c959f #b6d6fd #0969da #cf222e #0550ae #0a3069 #0550ae #6e7781 #8250df #953800 #8250df #0550ae #953800 #cf222e",
+"Solarized Light":"#fdf6e3 #eee8d5 #586e75 #93a1a1 #d9d2bd #268bd2 #859900 #268bd2 #2aa198 #d33682 #93a1a1 #b58900 #cb4b16 #6c71c4 #cb4b16 #268bd2 #859900"};
+let S={tabs:[],cur:0,lang:"ar",theme:"Dark+",size:15,auto:true};
+try{Object.assign(S,JSON.parse(localStorage.getItem("pyed")||"{}"))}catch(e){}
+if(!TH[S.theme])S.theme="Dark+";
+const t=k=>I18N[S.lang][k];
+const save=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
+const newTab=(name,code)=>({name:name||(t("untitled")+(S.tabs.length+1)+".py"),code:code||"print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n"});
+if(!S.tabs.length)S.tabs.push(newTab("main.py"));
+function applyTheme(){const a=TH[S.theme].split(" "),r=document.documentElement.style;VARS.forEach((v,i)=>r.setProperty("--"+v,a[i]))}
+
+/* ---------- Python highlighter ---------- */
+const KW=new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case".split(" "));
+const BI=new Set("abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip Exception ValueError TypeError KeyError IndexError OSError ImportError NameError AttributeError RuntimeError StopIteration ZeroDivisionError FileNotFoundError".split(" "));
+const RX=/(#[^\n]*)|((?:[rRbBfFuU]{1,2})?(?:"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?))|(@[A-Za-z_][\w.]*)|(0[xXoObB][\da-fA-F_]+|\d[\d_]*\.?\d*(?:[eE][+-]?\d+)?j?|\.\d+)|([A-Za-z_\u0080-\uFFFF][\w\u0080-\uFFFF]*)|([\s\S])/g;
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function highlight(src){
+ const L=[""];let prev="",m;RX.lastIndex=0;
+ const add=(c,x)=>x.split("\n").forEach((p,i)=>{if(i)L.push("");if(p)L[L.length-1]+=c?`<span class="${c}">${esc(p)}</span>`:esc(p)});
+ while((m=RX.exec(src))){
+  const x=m[0];let c="";
+  if(m[1])c="cm_";else if(m[2])c="st";else if(m[3])c="dc";else if(m[4])c="nu";
+  else if(m[5]){
+   if(prev==="def")c="fn";else if(prev==="class")c="cl";
+   else if(KW.has(x))c=/^(True|False|None)$/.test(x)?"cn":"kw";
+   else if(x==="self"||x==="cls")c="sf";
+   else if(BI.has(x)||/^__\w+__$/.test(x))c="bi";
+   else if(src[RX.lastIndex]==="(")c="fn";
+   prev=x;add(c,x);continue;
+  }else if(/[+\-*\/%=<>!&|^~]/.test(x))c="op";
+  add(c,x);if(!/^\s$/.test(x))prev="";
+ }
+ return L.map(l=>`<div class="l">${l||"\u200b"}</div>`).join("");
+}
+
+/* ---------- editor ---------- */
+const ed=$("ed"),hl=$("hl"),cell=$("cell");
+function render(){
+ hl.innerHTML=highlight(ed.value);
+ cell.style.setProperty("--gw",Math.max(2,String(ed.value.split("\n").length).length)+"ch");
+ S.tabs[S.cur].code=ed.value;save();
+}
+ed.addEventListener("input",render);
+const ins=s=>{ed.focus();document.execCommand("insertText",false,s)};
+ed.addEventListener("beforeinput",e=>{
+ if(e.isComposing)return;
+ if(e.inputType==="insertLineBreak"||e.inputType==="insertParagraph"){
+  e.preventDefault();
+  const p=ed.selectionStart,b=ed.value.slice(0,p),line=b.slice(b.lastIndexOf("\n")+1);
+  let ind=line.match(/^[ \t]*/)[0];
+  if(/:\s*$/.test(line))ind+="    ";
+  ins("\n"+ind);return;
+ }
+ if(e.inputType==="insertText"&&S.auto&&e.data&&e.data.length===1){
+  const pairs={"(":")","[":"]","{":"}",'"':'"',"'":"'"},c=e.data,nx=ed.value[ed.selectionStart];
+  if(")]}\"'".includes(c)&&nx===c&&ed.selectionStart===ed.selectionEnd){e.preventDefault();ed.setSelectionRange(ed.selectionStart+1,ed.selectionStart+1);return}
+  if(pairs[c]&&(!nx||/[\s)\]}:,]/.test(nx))&&ed.selectionStart===ed.selectionEnd){
+   const prev=ed.value[ed.selectionStart-1];
+   if((c==='"'||c==="'")&&prev&&/[\w\u0080-\uFFFF]/.test(prev))return;
+   e.preventDefault();ins(c+pairs[c]);ed.setSelectionRange(ed.selectionStart-1,ed.selectionStart-1);
+  }
+ }
+});
+ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();e.shiftKey?dedent():ins("    ")}});
+function dedent(){const p=ed.selectionStart,s=ed.value.lastIndexOf("\n",p-1)+1,m=ed.value.slice(s).match(/^( {1,4}|\t)/);if(m){ed.setSelectionRange(s,s+m[0].length);ins("")}}
+function load(){ed.value=S.tabs[S.cur].code;render();drawTabs()}
+function drawTabs(){
+ const el=$("tabs");el.innerHTML="";
+ S.tabs.forEach((tb,i)=>{const d=document.createElement("div");d.className="tab"+(i===S.cur?" on":"");
+  d.innerHTML=`<span>${esc(tb.name)}</span><b>✕</b>`;
+  d.onclick=ev=>{if(ev.target.tagName==="B"){if(S.tabs.length>1){S.tabs.splice(i,1);if(i<=S.cur)S.cur=Math.max(0,S.cur-1);load()}}else{S.cur=i;load()}};
+  el.appendChild(d)});
+}
+
+/* ---------- keys bar ---------- */
+["Tab","(",")","[","]","{","}",'"',"'",":","=","#","_",".",",","+","-","*","/","%","<",">","!","&","|","\\","@","$"].forEach(k=>{
+ const b=document.createElement("button");b.textContent=k==="Tab"?"⇥":k;
+ b.addEventListener("pointerdown",e=>e.preventDefault());
+ b.onclick=()=>ins(k==="Tab"?"    ":k);$("keys").appendChild(b)});
+
+/* ---------- actions ---------- */
+function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",1800)}
+window.onFile=(name,code)=>{S.tabs.push({name,code});S.cur=S.tabs.length-1;load()};
+const A=()=>window.Android||null;
+const need=f=>A()?f(A()):toast(t("nopy"));
+$("bRun").onclick=()=>need(a=>a.run(ed.value,S.tabs[S.cur].name));
+$("bNew").onclick=()=>{S.tabs.push(newTab());S.cur=S.tabs.length-1;load()};
+$("bOpen").onclick=()=>need(a=>a.openFile());
+$("bSave").onclick=()=>need(a=>a.saveAs(S.tabs[S.cur].name,ed.value));
+$("bUndo").onclick=()=>{ed.focus();document.execCommand("undo")};
+$("bRedo").onclick=()=>{ed.focus();document.execCommand("redo")};
+$("bTerm").onclick=()=>need(a=>a.terminal(""));
+$("bPip").onclick=()=>need(a=>a.terminal("pip install "));
+
+/* ---------- settings ---------- */
+$("oTheme").innerHTML=Object.keys(TH).map(k=>`<option>${k}</option>`).join("");
+function applySettings(){
+ applyTheme();
+ const r=document.documentElement;
+ r.style.setProperty("--fs",S.size+"px");r.lang=S.lang;r.dir=S.lang==="ar"?"rtl":"ltr";
+ $("sTitle").textContent=t("set");$("sLang").textContent=t("lang");$("sTheme").textContent=t("theme");
+ $("sSize").textContent=t("size");$("sAuto").textContent=t("auto");$("sOk").textContent=t("ok");
+ $("oLang").value=S.lang;$("oTheme").value=S.theme;$("oSize").value=S.size;$("oAuto").checked=S.auto;
+ save();
+}
+$("oTheme").onchange=()=>{S.theme=$("oTheme").value;applyTheme();save()};
+$("bSet").onclick=()=>$("modal").classList.add("show");
+$("sOk").onclick=()=>{S.lang=$("oLang").value;S.theme=$("oTheme").value;S.size=Math.min(30,Math.max(10,+$("oSize").value||15));S.auto=$("oAuto").checked;applySettings();$("modal").classList.remove("show")};
+applySettings();load();
+</script></body></html>
