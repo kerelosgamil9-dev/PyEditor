@@ -19,14 +19,25 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 .wrap{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
 .cell{display:grid;grid-template-columns:minmax(0,1fr);min-height:100%;--gw:2ch}
 .cm{font:var(--fs,15px)/1.55 "Roboto Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;tab-size:4;margin:0;padding:8px 14px 120px calc(var(--gw) + 24px);grid-area:1/1;min-width:0;letter-spacing:0}
-#hl{pointer-events:none;position:relative;z-index:2;color:var(--fg);counter-reset:ln}
+#hl{pointer-events:none;position:relative;z-index:2;color:var(--fg);counter-reset:ln;background:linear-gradient(#8887,#8887) calc(var(--gw) + 16px) 0/1px 100% no-repeat}
 .l{position:relative}
 .l::before{counter-increment:ln;content:counter(ln);position:absolute;top:0;left:calc(-1*(var(--gw) + 14px));width:var(--gw);text-align:right;color:var(--mut);-webkit-user-select:none}
 #ed{position:relative;z-index:1;background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--fg);border:0;outline:0;resize:none;overflow:hidden;width:100%}
 #ed::selection{background:var(--sel);-webkit-text-fill-color:transparent}
 .kw{color:var(--kw)}.bi{color:var(--bi)}.st{color:var(--st)}.nu{color:var(--nu)}.cm_{color:var(--cm);font-style:italic}.fn{color:var(--fn)}.cl{color:var(--cl)}.dc{color:var(--dc)}.cn{color:var(--cn)}.sf{color:var(--sf)}.op{color:var(--op)}
-.keys{display:flex;overflow-x:auto;background:var(--bar);border-top:1px solid #0003}
-.keys button{font:16px ui-monospace,monospace;min-width:40px}
+.keys{display:flex;background:var(--bar);border-top:1px solid #0003}
+#kt{display:flex;flex:none;border-right:1px solid #8884}
+#kb{display:flex;flex:1;overflow-x:auto}
+.keys button{flex:none;font:16px ui-monospace,monospace;min-width:40px}
+#kt button{min-width:46px;font-weight:700}
+#kt button.on{background:var(--sel)}
+#scrim{display:none;position:fixed;inset:0;background:#0007;z-index:20}
+#scrim.show{display:block}
+#drawer{position:fixed;top:0;bottom:0;left:0;width:min(78%,300px);background:var(--bar);z-index:21;transform:translateX(-105%);transition:transform .2s;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);direction:ltr}
+#drawer.show{transform:none}
+.dh{display:flex;align-items:center;gap:12px;padding:20px 16px;font-size:20px;font-weight:600;border-bottom:1px solid #8884}
+#drawer button{display:flex;align-items:center;gap:16px;background:none;border:0;color:var(--fg);font-size:16px;padding:14px 18px;width:100%;text-align:start}
+#drawer button:active{background:var(--sel)}
 #modal{display:none;position:fixed;inset:0;background:#0008;z-index:9;align-items:center;justify-content:center}
 #modal.show{display:flex}
 .box{background:var(--bar);border-radius:12px;padding:16px;width:min(90%,360px)}
@@ -36,14 +47,23 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 </style></head><body>
 <div id="app">
  <div class="bar">
-  <button class="run" id="bRun">▶</button>
-  <button id="bNew">＋</button><button id="bOpen">📂</button><button id="bSave">💾</button>
+  <button id="bMenu">☰</button><button id="bOpen">📂</button>
   <button id="bUndo">↶</button><button id="bRedo">↷</button>
-  <button id="bTerm">⌨</button><button id="bPip">📦</button><button id="bSet">⚙</button>
+  <span style="flex:1"></span>
+  <button class="run" id="bRun">▶</button>
  </div>
  <div id="tabs"></div>
  <div class="wrap"><div class="cell" id="cell"><pre id="hl" class="cm"></pre><textarea id="ed" class="cm" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" dir="ltr"></textarea></div></div>
- <div class="keys" id="keys"></div>
+ <div class="keys"><div id="kt"><button data-k="sym">#!</button><button data-k="kw">if</button></div><div id="kb"></div></div>
+</div>
+<div id="scrim"></div>
+<div id="drawer">
+ <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><rect width="108" height="108" rx="24" fill="#161826"/><path d="M32 32L54 76" stroke="#4B8BBE" stroke-width="13" stroke-linecap="round"/><path d="M76 32L54 76" stroke="#FFD43B" stroke-width="13" stroke-linecap="round"/><rect x="60" y="82" width="18" height="5" fill="#4ADE80"/></svg>PYVORA</div>
+ <button data-a="new">＋ <span data-i="new"></span></button>
+ <button data-a="save">💾 <span data-i="save"></span></button>
+ <button data-a="term">⌨ <span data-i="term"></span></button>
+ <button data-a="pip">📦 <span data-i="pip"></span></button>
+ <button data-a="set">⚙ <span data-i="set"></span></button>
 </div>
 <div id="modal"><div class="box">
  <h3 id="sTitle" style="margin:0 0 6px"></h3>
@@ -56,8 +76,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-const I18N={en:{set:"Settings",lang:"Language",theme:"Color theme",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app"},
-ar:{set:"الإعدادات",lang:"اللغة",theme:"ألوان الكود",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس"}};
+const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Color theme",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app"},
+ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان الكود",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس"}};
 /* themes: bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op */
 const VARS="bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op".split(" ");
 const TH={
@@ -77,9 +97,10 @@ const TH={
 let S={tabs:[],cur:0,lang:"ar",theme:"Dark+",size:15,auto:true};
 try{Object.assign(S,JSON.parse(localStorage.getItem("pyed")||"{}"))}catch(e){}
 if(!TH[S.theme])S.theme="Dark+";
+S.tabs.forEach(t=>{if(t.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")t.code=""});
 const t=k=>I18N[S.lang][k];
 const save=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
-const newTab=(name,code)=>({name:name||(t("untitled")+(S.tabs.length+1)+".py"),code:code||"print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n"});
+const newTab=(name,code)=>({name:name||(t("untitled")+(S.tabs.length+1)+".py"),code:code||""});
 if(!S.tabs.length)S.tabs.push(newTab("main.py"));
 function applyTheme(){const a=TH[S.theme].split(" "),r=document.documentElement.style;VARS.forEach((v,i)=>r.setProperty("--"+v,a[i]))}
 
@@ -147,10 +168,19 @@ function drawTabs(){
 }
 
 /* ---------- keys bar ---------- */
-["Tab","(",")","[","]","{","}",'"',"'",":","=","#","_",".",",","+","-","*","/","%","<",">","!","&","|","\\","@","$"].forEach(k=>{
- const b=document.createElement("button");b.textContent=k==="Tab"?"⇥":k;
- b.addEventListener("pointerdown",e=>e.preventDefault());
- b.onclick=()=>ins(k==="Tab"?"    ":k);$("keys").appendChild(b)});
+const SYM=["Tab","(",")","[","]","{","}",'"',"'",":","=","#","_",".",",","+","-","*","/","%","<",">","!","&","|","\\","@","$"];
+const KWS=["if","elif","else","for","while","return","import","from","def","print","input","class","try","except","in","and","or","not","True","False","None","range","len","int","str","with","as","pass","break","continue","self"];
+const FN=new Set(["print","input","range","len","int","str"]),COL=new Set(["else","try"]);
+let kmode="sym";
+function insKw(k){if(FN.has(k)){ins(k+"()");ed.setSelectionRange(ed.selectionStart-1,ed.selectionStart-1)}else ins(COL.has(k)?k+":":k+" ")}
+function drawKeys(){
+ const kb=$("kb");kb.innerHTML="";
+ (kmode==="sym"?SYM:KWS).forEach(k=>{const b=document.createElement("button");b.textContent=k==="Tab"?"⇥":k;
+  b.addEventListener("pointerdown",e=>e.preventDefault());
+  b.onclick=()=>kmode==="sym"?ins(k==="Tab"?"    ":k):insKw(k);kb.appendChild(b)});
+ document.querySelectorAll("#kt button").forEach(b=>b.classList.toggle("on",b.dataset.k===kmode))}
+document.querySelectorAll("#kt button").forEach(b=>{b.addEventListener("pointerdown",e=>e.preventDefault());b.onclick=()=>{kmode=b.dataset.k;drawKeys()}});
+drawKeys();
 
 /* ---------- actions ---------- */
 function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",1800)}
@@ -158,13 +188,17 @@ window.onFile=(name,code)=>{S.tabs.push({name,code});S.cur=S.tabs.length-1;load(
 const A=()=>window.Android||null;
 const need=f=>A()?f(A()):toast(t("nopy"));
 $("bRun").onclick=()=>need(a=>a.run(ed.value,S.tabs[S.cur].name));
-$("bNew").onclick=()=>{S.tabs.push(newTab());S.cur=S.tabs.length-1;load()};
 $("bOpen").onclick=()=>need(a=>a.openFile());
-$("bSave").onclick=()=>need(a=>a.saveAs(S.tabs[S.cur].name,ed.value));
 $("bUndo").onclick=()=>{ed.focus();document.execCommand("undo")};
 $("bRedo").onclick=()=>{ed.focus();document.execCommand("redo")};
-$("bTerm").onclick=()=>need(a=>a.terminal(""));
-$("bPip").onclick=()=>need(a=>a.terminal("pip install "));
+const menu=on=>{$("drawer").classList.toggle("show",on);$("scrim").classList.toggle("show",on)};
+$("bMenu").onclick=()=>menu(true);$("scrim").onclick=()=>menu(false);
+document.querySelectorAll("#drawer button").forEach(b=>b.onclick=()=>{menu(false);const a=b.dataset.a;
+ if(a==="new"){S.tabs.push(newTab());S.cur=S.tabs.length-1;load()}
+ else if(a==="save")need(x=>x.saveAs(S.tabs[S.cur].name,ed.value));
+ else if(a==="term")need(x=>x.terminal());
+ else if(a==="pip")need(x=>x.pip());
+ else $("modal").classList.add("show")});
 
 /* ---------- settings ---------- */
 $("oTheme").innerHTML=Object.keys(TH).map(k=>`<option>${k}</option>`).join("");
@@ -173,12 +207,12 @@ function applySettings(){
  const r=document.documentElement;
  r.style.setProperty("--fs",S.size+"px");r.lang=S.lang;r.dir=S.lang==="ar"?"rtl":"ltr";
  $("sTitle").textContent=t("set");$("sLang").textContent=t("lang");$("sTheme").textContent=t("theme");
+ document.querySelectorAll("[data-i]").forEach(x=>x.textContent=t(x.dataset.i));
  $("sSize").textContent=t("size");$("sAuto").textContent=t("auto");$("sOk").textContent=t("ok");
  $("oLang").value=S.lang;$("oTheme").value=S.theme;$("oSize").value=S.size;$("oAuto").checked=S.auto;
  save();
 }
 $("oTheme").onchange=()=>{S.theme=$("oTheme").value;applyTheme();save()};
-$("bSet").onclick=()=>$("modal").classList.add("show");
 $("sOk").onclick=()=>{S.lang=$("oLang").value;S.theme=$("oTheme").value;S.size=Math.min(30,Math.max(10,+$("oSize").value||15));S.auto=$("oAuto").checked;applySettings();$("modal").classList.remove("show")};
 applySettings();load();
 </script></body></html>
