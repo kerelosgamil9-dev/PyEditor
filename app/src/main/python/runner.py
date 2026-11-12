@@ -96,18 +96,37 @@ def _plat():
     else: abi = "armeabi_v7a"
     return ["android_%d_%s" % (api, abi) for api in range(16, 25)]
 
-def _pipcmd(d, a):
+def _pipcmd(d, a, extra=()):
     v = sys.version_info
-    cmd = ["install", "--target", d, "--upgrade", "--no-warn-script-location", "--disable-pip-version-check",
-           "--only-binary=:all:", "--implementation", "cp", "--python-version", "%d.%d" % (v[0], v[1]),
-           "--abi", "cp%d%d" % (v[0], v[1]), "--extra-index-url", PIP_INDEX]
+    cmd = ["install", "--target", d, "--upgrade", "--no-warn-script-location", "--no-warn-conflicts",
+           "--disable-pip-version-check", "--only-binary=:all:", "--implementation", "cp",
+           "--python-version", "%d.%d" % (v[0], v[1]), "--abi", "cp%d%d" % (v[0], v[1]),
+           "--extra-index-url", PIP_INDEX] + list(extra)
     for p in _plat(): cmd += ["--platform", p]
     return cmd + list(a)
+
+def _fix_pip(d):
+    """sys.path on Android has special objects pip cannot scan: make pip look only in our folder."""
+    from pip._internal.metadata.importlib import _envs
+    E = _envs.Environment
+    E.default = classmethod(lambda cls: cls([d]))
+    E.from_paths = classmethod(lambda cls, paths=None: cls([d] if paths is None else [x for x in paths if isinstance(x, str)]))
+
+def _cacert(wd):
+    p = os.path.join(wd, "cacert.pem")
+    if not os.path.exists(p):
+        import pkgutil
+        with open(p, "wb") as f: f.write(pkgutil.get_data("pip._vendor.certifi", "cacert.pem"))
+    return p
 
 def _install(a, d):
     try:
         from pip._internal.cli.main import main
-        rc = main(_pipcmd(d, a))
+        _fix_pip(d)
+        extra = []
+        try: extra = ["--cert", _cacert(os.path.dirname(d))]
+        except Exception: pass
+        rc = main(_pipcmd(d, a, extra))
     except SystemExit as e:
         rc = e.code or 0
     except BaseException:
@@ -174,11 +193,15 @@ def _cmd(a, wd, d):
     elif c == "exit": return True
     else: print(c + ": command not found  (help)")
 
+def _prompt(wd):
+    rel = os.path.relpath(os.path.realpath(os.getcwd()), os.path.realpath(wd))
+    return ("~" if rel == "." else "~/" + rel if not rel.startswith("..") else os.getcwd()) + " $ "
+
 def shell(b, wd):
     d = _setup(b, wd)
     print("PYVORA Terminal  (help)")
     while True:
-        sys.stdout.write(os.path.relpath(os.getcwd(), wd) + " $ ")
+        sys.stdout.write(_prompt(wd))
         line = b.readLine().strip()
         if not line: continue
         try:
