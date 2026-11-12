@@ -1,9 +1,9 @@
 package com.pyeditor
 
 import android.app.Activity
-import android.app.ActivityManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.view.Gravity
@@ -40,6 +40,7 @@ open class ConsoleActivity : Activity() {
     private lateinit var tog: Button
     private var web: WebView? = null
     private var webReady = false
+    private var guiFailed = false
     private val webPending = ArrayList<String>()
 
     // الجسر اللي بايثون بيكلمه
@@ -80,7 +81,9 @@ open class ConsoleActivity : Activity() {
     private fun run(w: WebView, json: String) = w.evaluateJavascript("tkApply(${JSONObject.quote(json)})", null)
 
     private fun guiSend(json: String) {
+        if (guiFailed) return
         if (web == null) {
+          try {
             val w = WebView(this)
             w.settings.javaScriptEnabled = true
             w.setBackgroundColor(Color.parseColor("#d9d9d9"))
@@ -97,6 +100,11 @@ open class ConsoleActivity : Activity() {
             web = w
             tog.visibility = View.VISIBLE
             showGui(true)
+          } catch (e: Throwable) {
+            guiFailed = true
+            io.write("\n[GUI error] $e\n")
+            return
+          }
         }
         if (webReady) run(web!!, json) else webPending.add(json)
     }
@@ -116,12 +124,14 @@ open class ConsoleActivity : Activity() {
     }
 
     override fun onCreate(b: Bundle?) {
+        if (Build.VERSION.SDK_INT >= 28) {
+            try { WebView.setDataDirectorySuffix("run") } catch (e: Exception) {}
+        }
         super.onCreate(b)
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         val mode = intent.getStringExtra("mode") ?: "run"
         val name = intent.getStringExtra("name") ?: "main.py"
         val title = when (mode) { "term" -> "Terminal"; "pip" -> "Pip"; else -> name }
-        setTaskDescription(ActivityManager.TaskDescription(title))
         val fg = Color.parseColor("#d4d4d4")
         val bar = Color.parseColor("#252526")
 
@@ -136,7 +146,7 @@ open class ConsoleActivity : Activity() {
         }
         head.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(tog)
-        head.addView(btn("■") { finishAndRemoveTask() })
+        head.addView(btn("■") { finish() })
 
         tv = TextView(this).apply {
             setTextColor(fg); typeface = Typeface.MONOSPACE; textSize = 14f
