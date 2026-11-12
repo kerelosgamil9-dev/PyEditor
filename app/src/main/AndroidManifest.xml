@@ -15,5 +15,8 @@
             android:process=":run" android:documentLaunchMode="always"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden"/>
+        <activity android:name=".ToolActivity" android:exported="false"
+            android:process=":run" android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden"/>
     </application>
 </manifest>
