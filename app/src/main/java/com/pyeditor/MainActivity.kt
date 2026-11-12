@@ -25,10 +25,7 @@ class MainActivity : Activity() {
         setContentView(web)
     }
 
-    private fun console(i: Intent) {
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        startActivity(i)
-    }
+    private fun console(i: Intent) = startActivity(i)
 
     inner class Bridge {
         @JavascriptInterface
