@@ -37,9 +37,12 @@ class MainActivity : Activity() {
                 .putExtra("code", code).putExtra("name", name))
         }
         @JavascriptInterface
-        fun terminal(prefill: String) {
-            console(Intent(this@MainActivity, ConsoleActivity::class.java)
-                .putExtra("term", true).putExtra("prefill", prefill))
+        fun terminal() {
+            startActivity(Intent(this@MainActivity, ToolActivity::class.java).putExtra("mode", "term"))
+        }
+        @JavascriptInterface
+        fun pip() {
+            startActivity(Intent(this@MainActivity, ToolActivity::class.java).putExtra("mode", "pip"))
         }
         @JavascriptInterface
         fun openFile() {
