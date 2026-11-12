@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PYVORA</title>
 <style>
-:root{--bg:#1e1e1e;--bar:#252526;--fg:#d4d4d4;--mut:#858585;--sel:#264f78;--ac:#0e639c}
+:root{--bg:#1e1e1e;--bar:#252526;--fg:#d4d4d4;--mut:#858585;--sel:#264f78;--ac:#0e639c;--ebg:#1e1e1e;--efg:#d4d4d4;--emut:#858585;--esel:#264f78}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%;padding-top:env(safe-area-inset-top)}
@@ -16,14 +16,14 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 .tab{padding:8px 12px;white-space:nowrap;color:var(--mut);font-size:14px;display:flex;gap:8px;align-items:center;border-bottom:2px solid transparent}
 .tab.on{color:var(--fg);border-bottom-color:var(--ac);background:var(--bg)}
 .tab b{font-weight:400;opacity:.6;padding:0 4px}
-.wrap{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+.wrap{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;background:var(--ebg)}
 .cell{display:grid;grid-template-columns:minmax(0,1fr);min-height:100%;--gw:2ch}
 .cm{font:var(--fs,15px)/1.55 "Roboto Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;tab-size:4;margin:0;padding:8px 14px 120px calc(var(--gw) + 24px);grid-area:1/1;min-width:0;letter-spacing:0}
-#hl{pointer-events:none;position:relative;z-index:2;color:var(--fg);counter-reset:ln;background:linear-gradient(#8887,#8887) calc(var(--gw) + 16px) 0/1px 100% no-repeat}
+#hl{pointer-events:none;position:relative;z-index:2;color:var(--efg);counter-reset:ln;background:linear-gradient(#8887,#8887) calc(var(--gw) + 16px) 0/1px 100% no-repeat}
 .l{position:relative}
-.l::before{counter-increment:ln;content:counter(ln);position:absolute;top:0;left:calc(-1*(var(--gw) + 14px));width:var(--gw);text-align:right;color:var(--mut);-webkit-user-select:none}
-#ed{position:relative;z-index:1;background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--fg);border:0;outline:0;resize:none;overflow:hidden;width:100%}
-#ed::selection{background:var(--sel);-webkit-text-fill-color:transparent}
+.l::before{counter-increment:ln;content:counter(ln);position:absolute;top:0;left:calc(-1*(var(--gw) + 14px));width:var(--gw);text-align:right;color:var(--emut);-webkit-user-select:none}
+#ed{position:relative;z-index:1;background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--efg);border:0;outline:0;resize:none;overflow:hidden;width:100%}
+#ed::selection{background:var(--esel);-webkit-text-fill-color:transparent}
 .kw{color:var(--kw)}.bi{color:var(--bi)}.st{color:var(--st)}.nu{color:var(--nu)}.cm_{color:var(--cm);font-style:italic}.fn{color:var(--fn)}.cl{color:var(--cl)}.dc{color:var(--dc)}.cn{color:var(--cn)}.sf{color:var(--sf)}.op{color:var(--op)}
 .keys{display:flex;background:var(--bar);border-top:1px solid #0003}
 #kt{display:flex;flex:none;border-right:1px solid #8884}
@@ -79,7 +79,7 @@ const $=id=>document.getElementById(id);
 const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Color theme",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app"},
 ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان الكود",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس"}};
 /* themes: bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op */
-const VARS="bg bar fg mut sel ac kw bi st nu cm fn cl dc cn sf op".split(" ");
+const VARS={0:"ebg",2:"efg",3:"emut",4:"esel",6:"kw",7:"bi",8:"st",9:"nu",10:"cm",11:"fn",12:"cl",13:"dc",14:"cn",15:"sf",16:"op"};
 const TH={
 "Dark+":"#1e1e1e #252526 #d4d4d4 #858585 #264f78 #0e639c #c586c0 #4fc1ff #ce9178 #b5cea8 #6a9955 #dcdcaa #4ec9b0 #dcdcaa #569cd6 #9cdcfe #d4d4d4",
 "Monokai":"#272822 #1e1f1c #f8f8f2 #75715e #49483e #3e7d1f #f92672 #66d9ef #e6db74 #ae81ff #75715e #a6e22e #a6e22e #a6e22e #ae81ff #fd971f #f92672",
@@ -102,7 +102,7 @@ const t=k=>I18N[S.lang][k];
 const save=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
 const newTab=(name,code)=>({name:name||(t("untitled")+(S.tabs.length+1)+".py"),code:code||""});
 if(!S.tabs.length)S.tabs.push(newTab("main.py"));
-function applyTheme(){const a=TH[S.theme].split(" "),r=document.documentElement.style;VARS.forEach((v,i)=>r.setProperty("--"+v,a[i]))}
+function applyTheme(){const a=TH[S.theme].split(" "),r=document.documentElement.style;for(const i in VARS)r.setProperty("--"+VARS[i],a[i])}
 
 /* ---------- Python highlighter ---------- */
 const KW=new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case".split(" "));
