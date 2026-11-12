@@ -12,7 +12,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ConsoleActivity" android:exported="false"
-            android:process=":run" android:documentLaunchMode="always"
+            android:process=":run"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden"/>
         <activity android:name=".ToolActivity" android:exported="false"
