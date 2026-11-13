@@ -92,10 +92,19 @@ input.tt,select.tt{border:1px solid #8a8a8a;border-radius:2px;padding:3px 4px}
 #dlg .fl div.sel{background:#4a6984;color:#fff}
 #dlg .pth{font-size:12px;color:#333;margin-bottom:6px;word-break:break-all}
 .sw{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin:8px 0}.sw i{display:block;height:28px;border:1px solid #888}
+.nb{width:100%;min-width:0;max-width:100%}.nbc{min-width:0;max-width:100%}.nbh{min-width:0;max-width:100%}
+.spw{display:inline-flex;align-items:stretch}.spw input{flex:1;min-width:0}
+.spw .ar{display:flex;flex-direction:column}.spw .ar b{flex:1;display:flex;align-items:center;padding:0 8px;font-size:9px;border:1px solid #888;background:#e8e8e8;color:#000;user-select:none}.spw .ar b:active{background:#bbb}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;height:28px}
+input[type=range]::-webkit-slider-runnable-track{height:8px;background:#b5b5b5;border:1px solid #888;border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:26px;margin-top:-10px;background:#ececec;border:2px solid;border-color:#fff #777 #777 #fff;border-radius:2px}
+.sc.v input[type=range]::-webkit-slider-runnable-track{width:8px;height:auto}
+.sc.v input[type=range]::-webkit-slider-thumb{margin-top:0;margin-left:-10px;width:26px;height:22px}
 </style></head><body><div id="mbar"></div><div id="root"></div><div id="mscrim"></div>
 <script>
 const SVG='http://www.w3.org/2000/svg';
-let W={},Z=1,ROOT=1,ZI=60;const dirty=new Set(),tvq=new Set(),pendQ=[];
+let W={},Z=1,ROOT=1,ZI=60,ZSET=false;
+function fitRoot(){if(!ZSET)return;const r=$('root'),mb=$('mbar').offsetHeight||0;r.style.zoom=Z;r.style.flex='none';r.style.width=Math.floor(innerWidth/Z)+'px';r.style.height=Math.floor((innerHeight-mb)/Z)+'px'}const dirty=new Set(),tvq=new Set(),pendQ=[];
 const $=id=>document.getElementById(id);
 const send=o=>{try{Native.ev(JSON.stringify(o))}catch(e){}};
 const mkd=c=>{const d=document.createElement('div');if(c)d.className=c;return d};
@@ -143,7 +152,7 @@ function refLab(w){if(!w.im)return;const has=!!(w.o.image&&IM[w.o.image]),txt=w.
  if(w.type!=='check'&&w.type!=='radio')w.el.style.flexDirection=fd;if(has&&txt&&cp!=='none'&&cp!=='center')w.im.style.margin='0 4px'}
 
 function tkApply(s){JSON.parse(s).forEach(a=>{try{const f=OPS[a[0]];f&&f(...a.slice(1))}catch(e){send({t:'err',m:a[0]+': '+e})}});
- dirty.forEach(relay);dirty.clear();tvq.forEach(tvRender);tvq.clear();
+ dirty.forEach(p=>{try{relay(p)}catch(err){send({t:'err',m:'layout: '+err})}});dirty.clear();tvq.forEach(tvRender);tvq.clear();
  if(pendQ.length){void document.body.offsetHeight;const L=pendQ.splice(0);L.forEach(async q=>{let r=null;try{r=await QH[q[1]](...q[2])}catch(e){r=null}send({t:'qr',req:q[0],r:r==null?null:r})})}}
 
 function hasPad(t){return t==='frame'}
@@ -162,8 +171,10 @@ function mk(id,type,pid,o){
    else el.onclick=()=>send({t:'cmd',id:id});break;
   case 'entry':case 'spin':{
    if(type==='spin'&&o.values){el=ce('select');el.className='e k';el.onchange=()=>{send({t:'val',id:id,v:el.value});send({t:'cmd',id:id})};w.sel2=true}
-   else{el=ce('input');el.className='e k';if(type==='spin'){el.type='number';el.step='any';el.onchange=()=>send({t:'cmd',id:id})}}
-   w.in=el;el.oninput=()=>send({t:'val',id:id,v:el.value,a:selS(el),b:selE(el)});el.onblur=()=>send({t:'blur',id:id});break}
+   else if(type==='spin'){const wr=mkd('k spw'),inn=ce('input');inn.className='e';inn.type='text';inn.inputMode='decimal';inn.onchange=()=>send({t:'cmd',id:id});
+    const ar=mkd('ar'),up=ce('b'),dn=ce('b');up.textContent='▲';dn.textContent='▼';up.onclick=()=>send({t:'spin',id:id,d:1});dn.onclick=()=>send({t:'spin',id:id,d:-1});ar.append(up,dn);wr.append(inn,ar);el=wr;w.spw=true;w.in=inn;inn.__w=id}
+   else{el=ce('input');el.className='e k'}
+   if(!w.in)w.in=el;const inn=w.in;inn.oninput=()=>send({t:'val',id:id,v:inn.value,a:selS(inn),b:selE(inn)});inn.onblur=()=>send({t:'blur',id:id});break}
   case 'combo':{const ro=o.state==='readonly';w.ro=ro;
    if(ro){el=ce('select');el.className='e k';el.onchange=()=>{send({t:'val',id:id,v:el.value});send({t:'virt',id:id,name:'ComboboxSelected'})}}
    else{el=ce('input');el.className='e k';const dl=ce('datalist');dl.id='dl'+id;document.body.appendChild(dl);el.setAttribute('list',dl.id);w.dl=dl;
@@ -207,7 +218,7 @@ const selE=e=>{try{return e.selectionEnd==null?0:e.selectionEnd}catch(x){return 
 
 function cfg(w,o){
  Object.assign(w.o,o);const e=w.el,s=e.style,t=w.type,inp=w.in;
- for(const k in o){const v=o[k];switch(k){
+ for(const k in o){const v=o[k];try{switch(k){
   case 'bg':{const c=C(v);s.background=c;if(t==='lframe'&&w.box)w.box.style.background=c;if(t==='text'||t==='tree')s.backgroundColor=c;if(t==='top'&&w.box)w.box.style.background=c;break}
   case 'fg':s.color=C(v);break;
   case 'font':setFont(e,v);break;
@@ -259,7 +270,7 @@ function cfg(w,o){
   case 'scrollregion':cvRegion(w,v);break;
   case 'scy':case 'scx':scWatch(w);break;
   case 'selectmode':if(t==='tree')tvq.add(w);break;
- }}
+ }}catch(err){send({t:'err',m:'config '+k+' ('+t+'): '+err})}}
  if(t==='scale')scUpd(w);
  if(t==='text')fitTa(w);
 }
@@ -288,7 +299,7 @@ function rel(w){const o=w.o,s=w.el.style,t=w.type,r=o.relief,b=o.bd;if(r===undef
  if(rr==='flat'&&!b){s.border='0';return}
  const c={raised:'#fff #777 #777 #fff',sunken:'#777 #fff #fff #777',groove:'#777 #fff #fff #777',ridge:'#fff #777 #777 #fff',solid:'#000',flat:'transparent'}[rr];
  s.border=bw+' solid';s.borderColor=c}
-function size(w){const o=w.o,s=w.el.style,t=w.type,ch=CH.includes(t);
+function size(w){const o=w.o,s=(w.spw?w.in:w.el).style,t=w.type,ch=CH.includes(t);
  if(t==='canvas'){s.width=(o.width||378)+'px';s.height=(o.height||265)+'px';cvFit(w);return}
  if(t==='scale'&&o.length){if(w.el.classList.contains('v'))s.height=o.length+'px';else s.width=o.length+'px';return}
  if(t==='scroll'){return}
@@ -599,7 +610,7 @@ const OPS={new:mk,
  fg:id=>{const w=W[id];if(!w)return;w.m=null;w.el.remove();const p=W[w.pid];if(p){p.ord=p.ord.filter(x=>x!==w);dirty.add(p)}},
  del:id=>{const w=W[id];if(!w)return;w.el.remove();if(w.dl)w.dl.remove();const p=W[w.pid];if(p){p.ord=p.ord.filter(x=>x!==w);p.kids=p.kids.filter(x=>x!==w);dirty.add(p)}delete W[id]},
  cc:(id,k,i,wt,mn,all)=>{const p=W[id];if(!p)return;if(all)p.ca[k]=wt;else{(k==='c'?p.cc:p.rc)[i]=wt;p.cm[k][i]=mn||0}dirty.add(p)},
- win:o=>{if(o.geo){Z=Math.max(.4,Math.min(1.6,innerWidth/o.geo[0]));const r=$('root');r.style.zoom=Z;r.style.width=100/Z+'%';r.style.height=100/Z+'%'}},
+ win:o=>{if(o.geo){Z=Math.max(.4,Math.min(1.6,innerWidth/o.geo[0]));ZSET=true;fitRoot()}},
  items:(id,a)=>{const w=W[id];if(w){w.items=a;w.sel=w.sel.filter(i=>i<a.length);w.ic={};lbDraw(w)}},
  lsel:(id,a)=>{const w=W[id];if(w){w.sel=a;lbDraw(w)}},
  litem:(id,i,o)=>{const w=W[id];if(w){w.ic[i]=Object.assign(w.ic[i]||{},o);lbDraw(w)}},
@@ -622,7 +633,7 @@ const OPS={new:mk,
  scr:(id,ax,a)=>{const w=W[id];if(!w)return;const e=w.el,y=ax==='y',sz=y?e.scrollHeight:e.scrollWidth,vw=y?e.clientHeight:e.clientWidth;let pos=y?e.scrollTop:e.scrollLeft;
   if(a[0]==='moveto')pos=a[1]*sz;else if(a[0]==='scroll'){const cs=getComputedStyle(e),unit=String(a[2]).startsWith('p')?vw*.9:(y?(parseFloat(cs.lineHeight)||(parseFloat(cs.fontSize)||13)*1.4):(parseFloat(cs.fontSize)||13)*2);pos+=a[1]*unit}else return;
   if(y)e.scrollTop=pos;else e.scrollLeft=pos},
- mbar:(id,tree)=>{const w=W[id];if(!w)return;const bar=w.type==='root'?$('mbar'):w.mb;bar.innerHTML='';bar.style.display=tree.items.length?'block':'none';
+ mbar:(id,tree)=>{const w=W[id];if(!w)return;const bar=w.type==='root'?$('mbar'):w.mb;bar.innerHTML='';bar.style.display=tree.items.length?'block':'none';fitRoot();
   tree.items.forEach(it=>{if(it.t==='sep')return;const b=mkd('mbt');b.textContent=it.label;if(it.st==='disabled')b.style.color='#999';
    b.onclick=()=>{if(it.t==='cascade'&&it.sub){const r=b.getBoundingClientRect();showMenu(it.sub,r.left/Z,r.bottom/Z);b.classList.add('on')}else if(it.t!=='cascade')send({t:'mcmd',id:tree.id,i:it.i})};bar.appendChild(b)})},
  mmenu:(id,tree)=>{const w=W[id];if(w)w.menuTree=tree},
@@ -643,5 +654,5 @@ const OPS={new:mk,
   a.forEach(s=>{const i=ce('img');i.src='data:image/png;base64,'+s;i.style.cssText='display:block;max-width:100%;margin:4px auto';o.appendChild(i)});
   document.body.appendChild(o)}};
 const sz=()=>send({t:'size',w:Math.round(innerWidth/Z),h:Math.round(innerHeight/Z)});
-addEventListener('load',sz);addEventListener('resize',sz);
+addEventListener('load',sz);addEventListener('resize',()=>{fitRoot();sz()});
 </script></body></html>
