@@ -29,7 +29,6 @@ class MainActivity : Activity() {
         web.addJavascriptInterface(Bridge(), "Android")
         web.loadUrl("file:///android_asset/index.html")
         setContentView(web)
-        if (!Storage.granted(this)) { asked = true; askStorage() }
     }
 
     override fun onResume() {
