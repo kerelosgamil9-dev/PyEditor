@@ -406,6 +406,7 @@ class Misc:
     def _sname(self): return "T" + type(self).__name__
     def _cl(self, o):
         r = {}
+        if "style" in o: self._o["style"] = o["style"]
         for k, v in o.items():
             k = _ALIAS.get(k, k)
             if k == "command":
@@ -1898,7 +1899,7 @@ class Style:
     def __init__(self, master=None): pass
     def configure(self, style, query_opt=None, **kw):
         if query_opt: return _STYLES.get(style, {}).get(query_opt)
-        _STYLES.setdefault(style, {}).update({_ALIAS.get(k, k) if k in ("foreground",) else k: v for k, v in kw.items()})
+        _STYLES.setdefault(style, {}).update(kw)
         self._reapply()
     def map(self, style, query_opt=None, **kw):
         s = _STYLES.setdefault(style, {}); m = s.setdefault("_map", {})
@@ -2021,6 +2022,8 @@ def _handle(e):
         if n is not None:
             n["open"] = bool(e["open"]); _fireb(w, {"cat": "v:TreeviewOpen" if e["open"] else "v:TreeviewClose", "wid": w._id})
     elif t == "hdr": w._hdrclick(e["col"])
+    elif t == "spin":
+        if hasattr(w, "invoke"): w.invoke("buttonup" if e.get("d", 1) > 0 else "buttondown")
     elif t == "nbsel": w._nbsel(e["i"])
     elif t == "sbcmd":
         if w._cmd: _cb(w._cmd, *e["a"])
