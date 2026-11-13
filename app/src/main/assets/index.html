@@ -41,6 +41,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 #modal{display:none;position:fixed;inset:0;background:#0008;z-index:9;align-items:center;justify-content:center}
 #modal.show{display:flex}
 .box{background:var(--bar);border-radius:12px;padding:16px;width:min(90%,360px);max-height:90vh;overflow-y:auto}
+.wrapbox{position:relative;flex:1;min-height:0;display:flex}
+#fth{position:absolute;right:0;top:0;width:34px;height:60px;display:none;opacity:0;pointer-events:none;touch-action:none;transition:opacity .25s;z-index:6;direction:ltr}
+#fth::after{content:"";position:absolute;right:5px;top:0;bottom:0;width:8px;border-radius:5px;background:var(--ac);box-shadow:0 0 0 1px #0006;transition:width .15s}
+#fth.show{opacity:1;pointer-events:auto}#fth.drag::after{width:16px}
 .tab.add{position:sticky;right:0;background:var(--bar);font-size:22px;padding:2px 16px;color:var(--fg);flex:none}
 #dlg2{display:none;position:fixed;inset:0;background:#000a;z-index:40;align-items:center;justify-content:center}
 #dlg2.show{display:flex}
@@ -63,7 +67,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
   <button class="run" id="bRun">▶</button>
  </div>
  <div id="tabs"></div>
- <div class="wrap"><div class="cell" id="cell"><pre id="hl" class="cm"></pre><textarea id="ed" class="cm" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" dir="ltr"></textarea></div></div>
+ <div class="wrapbox"><div class="wrap"><div class="cell" id="cell"><pre id="hl" class="cm"></pre><textarea id="ed" class="cm" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" dir="ltr"></textarea></div></div><div id="fth"></div></div>
  <div class="keys"><div id="kt"><button data-k="sym">#!</button><button data-k="kw">if</button></div><div id="kb"></div></div>
 </div>
 <div id="scrim"></div>
@@ -91,8 +95,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"PYVORA folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
-ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر PYVORA",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
+const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",permT:"File access",permM:"To save your files (json, txt…) on the phone, PYVORA needs file access. A settings screen will open: turn the switch on, then come back.",allow:"Allow",later:"Later",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"PYVORA folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
+ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",permT:"السماح بالوصول للملفات",permM:"عشان البرنامج يحفظ ملفاتك (json وغيره) في ذاكرة التليفون محتاج صلاحية الملفات. هتفتح لك شاشة إعدادات: فعّل الزرار وارجع للتطبيق.",allow:"سماح",later:"لاحقًا",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر PYVORA",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
 /* editor themes: ebg bar fg mut sel ac */
 const EDT={
 "Dark+":"#1e1e1e #252526 #d4d4d4 #858585 #264f78 #0e639c",
@@ -164,7 +168,9 @@ if(!EDT[S.ui])S.ui="Dark+";if(S.syn!=="Custom"&&!SYN[S.syn])S.syn="Dark+";
 if(!S.custom)S.custom=Object.fromEntries(SK.map((k,i)=>[k,SYN["Dark+"].split(" ")[i]]));
 S.tabs.forEach(t=>{if(t.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")t.code="";if(t.path==null)t.path=""});
 const t=k=>I18N[S.lang][k];
-const save=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
+const saveNow=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
+let saveT=0;const save=()=>{clearTimeout(saveT);saveT=setTimeout(saveNow,400)};
+addEventListener("pagehide",saveNow);document.addEventListener("visibilitychange",()=>{if(document.hidden)saveNow()});
 function freeName(){let i=1;const used=new Set(S.tabs.map(x=>x.name));while(used.has(t("untitled")+i+".py"))i++;return t("untitled")+i+".py"}
 const newTab=(name,code)=>({name:name||freeName(),code:code||"",path:""});
 if(!S.tabs.length)S.tabs.push(newTab("main.py"));
@@ -178,7 +184,7 @@ const KW=new Set("False None True and as assert async await break class continue
 const BI=new Set("abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip Exception ValueError TypeError KeyError IndexError OSError ImportError NameError AttributeError RuntimeError StopIteration ZeroDivisionError FileNotFoundError".split(" "));
 const RX=/(#[^\n]*)|((?:[rRbBfFuU]{1,2})?(?:"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?))|(@[A-Za-z_][\w.]*)|(0[xXoObB][\da-fA-F_]+|\d[\d_]*\.?\d*(?:[eE][+-]?\d+)?j?|\.\d+)|([A-Za-z_\u0080-\uFFFF][\w\u0080-\uFFFF]*)|([\s\S])/g;
 const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-function highlight(src){
+function hlLines(src){
  const L=[""];let prev="",m;RX.lastIndex=0;
  const add=(c,x)=>x.split("\n").forEach((p,i)=>{if(i)L.push("");if(p)L[L.length-1]+=c?`<span class="${c}">${esc(p)}</span>`:esc(p)});
  while((m=RX.exec(src))){
@@ -194,16 +200,45 @@ function highlight(src){
   }else if(/[+\-*\/%=<>!&|^~]/.test(x))c="op";
   add(c,x);if(!/^\s$/.test(x))prev="";
  }
- return L.map(l=>`<div class="l">${l||"\u200b"}</div>`).join("");
+ return L;
 }
+const wrapLine=l=>`<div class="l">${l||"\u200b"}</div>`;
+function highlight(src){return hlLines(src).map(wrapLine).join("")}
 
 /* ---------- editor ---------- */
 const ed=$("ed"),hl=$("hl"),cell=$("cell");
+const LIM=15000;let prevV="",big=false,winA=0,winB=0;
+const wrapEl=document.querySelector(".wrap");
+function visRange(){const ch=hl.children,n=ch.length;if(!n)return[0,0];const top=wrapEl.scrollTop-10,bot=wrapEl.scrollTop+wrapEl.clientHeight+10;
+ let lo=0,hi=n-1;while(lo<hi){const m=(lo+hi)>>1,e=ch[m];if(e.offsetTop+e.offsetHeight<top)lo=m+1;else hi=m}
+ let b=lo;while(b<n-1&&ch[b].offsetTop<bot)b++;return[Math.max(0,lo-40),Math.min(n,b+40)]}
+function paint(L,a,b){const L2=hlLines(L.slice(a,b).join("\n"));for(let k=0;k<L2.length;k++){const el=hl.children[a+k];if(el)el.innerHTML=L2[k]||"\u200b"}}
+function rebuildBig(v){const L=v.split("\n");hl.innerHTML=L.map(l=>`<div class="l">${l?esc(l):"\u200b"}</div>`).join("");const r=visRange();winA=r[0];winB=r[1];paint(L,r[0],r[1])}
+function quickEdit(a,b){let p=0,m=Math.min(a.length,b.length);while(p<m&&a.charCodeAt(p)===b.charCodeAt(p))p++;
+ let s2=0;while(s2<m-p&&a.charCodeAt(a.length-1-s2)===b.charCodeAt(b.length-1-s2))s2++;
+ if(a.slice(p,a.length-s2).indexOf("\n")>=0||b.slice(p,b.length-s2).indexOf("\n")>=0)return false;
+ let c=0,i=-1;while((i=b.indexOf("\n",i+1))>=0&&i<p)c++;
+ const st=b.lastIndexOf("\n",p-1)+1;let en=b.indexOf("\n",st);if(en<0)en=b.length;
+ const el=hl.children[c];if(!el)return false;el.innerHTML=hlLines(b.slice(st,en))[0]||"\u200b";return true}
 function render(){
- hl.innerHTML=highlight(ed.value);
- cell.style.setProperty("--gw",Math.max(2,String(ed.value.split("\n").length).length)+"ch");
- S.tabs[S.cur].code=ed.value;save();
+ const v=ed.value,was=big;big=v.length>LIM;
+ if(!big)hl.innerHTML=highlight(v);
+ else if(!(was&&hl.children.length&&quickEdit(prevV,v)))rebuildBig(v);
+ prevV=v;let n=1,i=-1;while((i=v.indexOf("\n",i+1))>=0)n++;
+ cell.style.setProperty("--gw",Math.max(2,String(n).length)+"ch");
+ S.tabs[S.cur].code=v;save();
 }
+let rhT=0;wrapEl.addEventListener("scroll",()=>{if(!big||rhT)return;rhT=requestAnimationFrame(()=>{rhT=0;const r=visRange();if(r[0]<winA||r[1]>winB){paint(ed.value.split("\n"),r[0],r[1]);winA=r[0];winB=r[1]}})},{passive:true});
+/* fast scroll bar: shows while scrolling, hides after 3 seconds */
+const fth=$("fth");let fhide=0,fdrag=null;
+function fsUpdate(){const sh=wrapEl.scrollHeight,ch=wrapEl.clientHeight;if(sh<=ch+4){fth.style.display="none";return false}fth.style.display="block";
+ const th=Math.max(60,ch*ch/sh),tr=ch-th;fth.style.height=th+"px";fth.style.top=(wrapEl.scrollTop/(sh-ch)*tr)+"px";return true}
+function fsShow(){if(!fsUpdate())return;fth.classList.add("show");clearTimeout(fhide);if(!fdrag)fhide=setTimeout(()=>fth.classList.remove("show"),3000)}
+wrapEl.addEventListener("scroll",fsShow,{passive:true});
+fth.addEventListener("pointerdown",e=>{e.preventDefault();fth.setPointerCapture(e.pointerId);fdrag={y:e.clientY,top:parseFloat(fth.style.top)||0};fth.classList.add("drag","show");clearTimeout(fhide)});
+fth.addEventListener("pointermove",e=>{if(!fdrag)return;const sh=wrapEl.scrollHeight,ch=wrapEl.clientHeight,tr=ch-fth.offsetHeight;if(tr<=0)return;
+ const t=Math.max(0,Math.min(tr,fdrag.top+e.clientY-fdrag.y));wrapEl.scrollTop=t/tr*(sh-ch)});
+const fend=()=>{fdrag=null;fth.classList.remove("drag");fsShow()};fth.addEventListener("pointerup",fend);fth.addEventListener("pointercancel",fend);
 ed.addEventListener("input",render);
 const ins=s=>{ed.focus();document.execCommand("insertText",false,s)};
 ed.addEventListener("beforeinput",e=>{
@@ -312,4 +347,6 @@ $("oSyn").onchange=()=>{S.syn=$("oSyn").value;applyTheme();drawCust();save()};
 $("oDir").onchange=()=>{S.dir=$("oDir").value;try{if(A())A().setDirMode(S.dir)}catch(e){}save()};
 $("sOk").onclick=()=>{S.lang=$("oLang").value;S.ui=$("oTheme").value;S.syn=$("oSyn").value;S.dir=$("oDir").value;S.size=Math.min(30,Math.max(10,+$("oSize").value||15));S.auto=$("oAuto").checked;applySettings();$("modal").classList.remove("show")};
 applySettings();load();
+setTimeout(async()=>{const a=A();if(!a||S.noask)return;let ok=true;try{ok=a.hasStorage()}catch(e){}if(ok)return;
+ const r=await ask(t("permT"),t("permM"),[[t("allow"),"y","pri"],[t("later"),"n"]]);if(r==="y")a.grantStorage();else{S.noask=true;saveNow()}},700);
 </script></body></html>
