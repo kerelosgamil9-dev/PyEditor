@@ -6,6 +6,11 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.content.Context
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.view.inputmethod.InputMethodManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -41,6 +46,9 @@ open class ConsoleActivity : Activity() {
     private var web: WebView? = null
     private var webReady = false
     private var guiFailed = false
+    private var mode = "run"
+    private var wantInput = false
+    private var inErr = false
     private val webPending = ArrayList<String>()
 
     // الجسر اللي بايثون بيكلمه
@@ -53,7 +61,18 @@ open class ConsoleActivity : Activity() {
             }
             tv.postDelayed({ flush() }, 40)
         }
-        fun readLine(): String = q.take()
+        fun readLine(): String {
+            runOnUiThread {
+                wantInput = true
+                if (web?.visibility == View.VISIBLE) showGui(false)
+                updateRow()
+                input.requestFocus()
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }
+            val s = q.take()
+            runOnUiThread { wantInput = false; updateRow() }
+            return s
+        }
         fun nextEvent(ms: Int): String = events.poll(ms.toLong(), TimeUnit.MILLISECONDS) ?: ""
         fun gui(json: String) { runOnUiThread { guiSend(json) } }
     }
@@ -67,15 +86,41 @@ open class ConsoleActivity : Activity() {
     private fun flush() {
         val s = synchronized(buf) { val t = buf.toString(); buf.setLength(0); pending = false; t }
         val i = s.lastIndexOf('\u000c')
-        if (i >= 0) { tv.text = ""; tv.append(s.substring(i + 1)) } else tv.append(s)
+        if (i >= 0) { tv.text = ""; inErr = false; appendMarked(s.substring(i + 1)) } else appendMarked(s)
         if (tv.length() > 300000) tv.text = tv.text.subSequence(tv.length() - 200000, tv.length())
         sv.post { sv.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    /** text between \u0001 and \u0002 comes from stderr and is painted red */
+    private fun appendMarked(s: String) {
+        val sb = SpannableStringBuilder()
+        var start = 0
+        var errStart = if (inErr) 0 else -1
+        val red = Color.parseColor("#f48771")
+        for (i in s.indices) {
+            val c = s[i]
+            if (c == '\u0001') { sb.append(s, start, i); start = i + 1; errStart = sb.length; inErr = true }
+            else if (c == '\u0002') {
+                sb.append(s, start, i); start = i + 1
+                if (errStart >= 0 && sb.length > errStart) sb.setSpan(ForegroundColorSpan(red), errStart, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                errStart = -1; inErr = false
+            }
+        }
+        sb.append(s, start, s.length)
+        if (errStart >= 0 && sb.length > errStart) sb.setSpan(ForegroundColorSpan(red), errStart, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        tv.append(sb)
+    }
+
+    /** the input box exists only while the program is waiting for input() (always shown in terminal / pip) */
+    private fun updateRow() {
+        val gui = web?.visibility == View.VISIBLE
+        row.visibility = if (wantInput || (mode != "run" && !gui)) View.VISIBLE else View.GONE
     }
 
     private fun showGui(on: Boolean) {
         web?.visibility = if (on) View.VISIBLE else View.GONE
         sv.visibility = if (on) View.GONE else View.VISIBLE
-        row.visibility = if (on) View.GONE else View.VISIBLE
+        updateRow()
     }
 
     private fun run(w: WebView, json: String) = w.evaluateJavascript("tkApply(${JSONObject.quote(json)})", null)
@@ -129,7 +174,7 @@ open class ConsoleActivity : Activity() {
         }
         super.onCreate(b)
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-        val mode = intent.getStringExtra("mode") ?: "run"
+        mode = intent.getStringExtra("mode") ?: "run"
         val name = intent.getStringExtra("name") ?: "main.py"
         val title = when (mode) { "term" -> "Terminal"; "pip" -> "Pip"; else -> name }
         val fg = Color.parseColor("#d4d4d4")
@@ -175,20 +220,22 @@ open class ConsoleActivity : Activity() {
         root.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(row)
         setContentView(root)
+        updateRow()
 
         val wd = filesDir.absolutePath
+        val pub = Storage.path(this)
         val code = intent.getStringExtra("code") ?: ""
         thread {
             try {
                 val m = Python.getInstance().getModule("runner")
                 when (mode) {
-                    "term" -> m.callAttr("shell", io, wd)
-                    "pip" -> m.callAttr("pip_page", io, wd)
-                    else -> m.callAttr("run", io, code, name, wd)
+                    "term" -> m.callAttr("shell", io, wd, pub)
+                    "pip" -> m.callAttr("pip_page", io, wd, pub)
+                    else -> m.callAttr("run", io, code, name, wd, pub)
                 }
             } catch (e: Throwable) { io.write("\n$e\n") }
             io.write(if (mode == "run") "\n[Finished ✔]\n" else "\n[Closed]\n")
-            runOnUiThread { status.text = "$title ✔"; showGui(false) }
+            runOnUiThread { wantInput = false; status.text = "$title ✔"; showGui(false) }
         }
     }
 
