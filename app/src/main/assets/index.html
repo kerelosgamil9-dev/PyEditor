@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>PYVORA</title>
+<title>Pyvora</title>
 <style>
 :root{--bg:#1e1e1e;--bar:#252526;--fg:#d4d4d4;--mut:#858585;--sel:#264f78;--ac:#0e639c;--ebg:#1e1e1e;--efg:#d4d4d4;--emut:#858585;--esel:#264f78}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -41,6 +41,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 #modal{display:none;position:fixed;inset:0;background:#0008;z-index:9;align-items:center;justify-content:center}
 #modal.show{display:flex}
 .box{background:var(--bar);border-radius:12px;padding:16px;width:min(90%,360px);max-height:90vh;overflow-y:auto}
+.cell.vm .cm{white-space:pre;overflow-wrap:normal}.cell.vm{min-width:calc(var(--gw) + 60px + var(--mx,40)*1ch)}.wrap.vm{overflow-x:auto}
 .wrapbox{position:relative;flex:1;min-height:0;display:flex}
 #fth{position:absolute;right:0;top:0;width:34px;height:60px;display:none;opacity:0;pointer-events:none;touch-action:none;transition:opacity .25s;z-index:6;direction:ltr}
 #fth::after{content:"";position:absolute;right:5px;top:0;bottom:0;width:8px;border-radius:5px;background:var(--ac);box-shadow:0 0 0 1px #0006;transition:width .15s}
@@ -72,7 +73,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 </div>
 <div id="scrim"></div>
 <div id="drawer">
- <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><rect width="108" height="108" rx="24" fill="#161826"/><path d="M32 32L54 76" stroke="#4B8BBE" stroke-width="13" stroke-linecap="round"/><path d="M76 32L54 76" stroke="#FFD43B" stroke-width="13" stroke-linecap="round"/><rect x="60" y="82" width="18" height="5" fill="#4ADE80"/></svg>PYVORA</div>
+ <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#3730A3"/></linearGradient><linearGradient id="lf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#C7D2FE"/></linearGradient></defs><rect width="108" height="108" rx="26" fill="url(#lb)"/><path fill-rule="evenodd" fill="url(#lf)" d="M40,28H58A20,20 0 0 1 58,68H48V76A6,6 0 0 1 42,82H40A6,6 0 0 1 34,76V34A6,6 0 0 1 40,28ZM52,38L52,58L69,48Z"/><path fill="#22D3EE" d="M58,76H77A3,3 0 0 1 77,82H58A3,3 0 0 1 58,76Z"/></svg>Pyvora</div>
  <button data-a="new">＋ <span data-i="new"></span></button>
  <button data-a="save">💾 <span data-i="save"></span></button>
  <button data-a="term">⌨ <span data-i="term"></span></button>
@@ -95,8 +96,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",permT:"File access",permM:"To save your files (json, txt…) on the phone, PYVORA needs file access. A settings screen will open: turn the switch on, then come back.",allow:"Allow",later:"Later",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"PYVORA folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
-ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",permT:"السماح بالوصول للملفات",permM:"عشان البرنامج يحفظ ملفاتك (json وغيره) في ذاكرة التليفون محتاج صلاحية الملفات. هتفتح لك شاشة إعدادات: فعّل الزرار وارجع للتطبيق.",allow:"سماح",later:"لاحقًا",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر PYVORA",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
+const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",permT:"File access",permM:"To save your files (json, txt…) on the phone, Pyvora needs file access. A settings screen will open: turn the switch on, then come back.",allow:"Allow",later:"Later",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"Pyvora folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
+ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",permT:"السماح بالوصول للملفات",permM:"عشان البرنامج يحفظ ملفاتك (json وغيره) في ذاكرة التليفون محتاج صلاحية الملفات. هتفتح لك شاشة إعدادات: فعّل الزرار وارجع للتطبيق.",allow:"سماح",later:"لاحقًا",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر Pyvora",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
 /* editor themes: ebg bar fg mut sel ac */
 const EDT={
 "Dark+":"#1e1e1e #252526 #d4d4d4 #858585 #264f78 #0e639c",
@@ -207,28 +208,26 @@ function highlight(src){return hlLines(src).map(wrapLine).join("")}
 
 /* ---------- editor ---------- */
 const ed=$("ed"),hl=$("hl"),cell=$("cell");
-const LIM=15000;let prevV="",big=false,winA=0,winB=0;
-const wrapEl=document.querySelector(".wrap");
-function visRange(){const ch=hl.children,n=ch.length;if(!n)return[0,0];const top=wrapEl.scrollTop-10,bot=wrapEl.scrollTop+wrapEl.clientHeight+10;
- let lo=0,hi=n-1;while(lo<hi){const m=(lo+hi)>>1,e=ch[m];if(e.offsetTop+e.offsetHeight<top)lo=m+1;else hi=m}
- let b=lo;while(b<n-1&&ch[b].offsetTop<bot)b++;return[Math.max(0,lo-40),Math.min(n,b+40)]}
-function paint(L,a,b){const L2=hlLines(L.slice(a,b).join("\n"));for(let k=0;k<L2.length;k++){const el=hl.children[a+k];if(el)el.innerHTML=L2[k]||"\u200b"}}
-function rebuildBig(v){const L=v.split("\n");hl.innerHTML=L.map(l=>`<div class="l">${l?esc(l):"\u200b"}</div>`).join("");const r=visRange();winA=r[0];winB=r[1];paint(L,r[0],r[1])}
-function quickEdit(a,b){let p=0,m=Math.min(a.length,b.length);while(p<m&&a.charCodeAt(p)===b.charCodeAt(p))p++;
- let s2=0;while(s2<m-p&&a.charCodeAt(a.length-1-s2)===b.charCodeAt(b.length-1-s2))s2++;
- if(a.slice(p,a.length-s2).indexOf("\n")>=0||b.slice(p,b.length-s2).indexOf("\n")>=0)return false;
- let c=0,i=-1;while((i=b.indexOf("\n",i+1))>=0&&i<p)c++;
- const st=b.lastIndexOf("\n",p-1)+1;let en=b.indexOf("\n",st);if(en<0)en=b.length;
- const el=hl.children[c];if(!el)return false;el.innerHTML=hlLines(b.slice(st,en))[0]||"\u200b";return true}
+/* Big files: only the lines on screen are drawn (fixed line height, no wrapping) so pasting thousands of lines stays fast */
+const VL=12000,VN=700,wrapEl=document.querySelector(".wrap");
+let vm=false,wa=0,wb=0,curL=[""],LH=23,rhT=0;
+function setVm(on){if(on===vm)return;vm=on;cell.classList.toggle("vm",on);wrapEl.classList.toggle("vm",on);
+ if(!on){hl.style.paddingTop="";hl.style.paddingBottom="";hl.style.counterReset="";cell.style.removeProperty("--mx")}}
+function paintVm(force){const L=curL,N=L.length,vis=Math.ceil(wrapEl.clientHeight/LH)+2,first=Math.max(0,Math.floor((wrapEl.scrollTop-8)/LH));
+ if(!force&&first-10>=wa&&first+vis+10<=wb)return;
+ const a=Math.max(0,first-40),b=Math.min(N,first+vis+40);
+ hl.style.paddingTop=(8+a*LH)+"px";hl.style.paddingBottom=(120+(N-b)*LH)+"px";hl.style.counterReset="ln "+a;
+ hl.innerHTML=hlLines(L.slice(a,b).join("\n")).map(wrapLine).join("");wa=a;wb=b}
 function render(){
- const v=ed.value,was=big;big=v.length>LIM;
- if(!big)hl.innerHTML=highlight(v);
- else if(!(was&&hl.children.length&&quickEdit(prevV,v)))rebuildBig(v);
- prevV=v;let n=1,i=-1;while((i=v.indexOf("\n",i+1))>=0)n++;
+ const v=ed.value;let n=1,i=-1,ls=0,mx=0;
+ while((i=v.indexOf("\n",ls))>=0){if(i-ls>mx)mx=i-ls;n++;ls=i+1}if(v.length-ls>mx)mx=v.length-ls;
  cell.style.setProperty("--gw",Math.max(2,String(n).length)+"ch");
+ if(v.length>VL||n>VN){setVm(true);const g=parseFloat(getComputedStyle(ed).lineHeight);LH=g>0?g:S.size*1.55;
+  curL=v.split("\n");cell.style.setProperty("--mx",mx);paintVm(true)}
+ else{setVm(false);hl.innerHTML=highlight(v)}
  S.tabs[S.cur].code=v;save();
 }
-let rhT=0;wrapEl.addEventListener("scroll",()=>{if(!big||rhT)return;rhT=requestAnimationFrame(()=>{rhT=0;const r=visRange();if(r[0]<winA||r[1]>winB){paint(ed.value.split("\n"),r[0],r[1]);winA=r[0];winB=r[1]}})},{passive:true});
+wrapEl.addEventListener("scroll",()=>{if(vm&&!rhT)rhT=requestAnimationFrame(()=>{rhT=0;paintVm(false)})},{passive:true});
 /* fast scroll bar: shows while scrolling, hides after 3 seconds */
 const fth=$("fth");let fhide=0,fdrag=null;
 function fsUpdate(){const sh=wrapEl.scrollHeight,ch=wrapEl.clientHeight;if(sh<=ch+4){fth.style.display="none";return false}fth.style.display="block";
