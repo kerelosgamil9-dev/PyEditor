@@ -168,7 +168,7 @@ if(!EDT[S.ui])S.ui="Dark+";if(S.syn!=="Custom"&&!SYN[S.syn])S.syn="Dark+";
 if(!S.custom)S.custom=Object.fromEntries(SK.map((k,i)=>[k,SYN["Dark+"].split(" ")[i]]));
 S.tabs.forEach(t=>{if(t.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")t.code="";if(t.path==null)t.path=""});
 const t=k=>I18N[S.lang][k];
-const saveNow=()=>{try{localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
+const saveNow=()=>{try{if(typeof ed!=="undefined"&&S.tabs[S.cur])S.tabs[S.cur].code=ed.value;localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
 let saveT=0;const save=()=>{clearTimeout(saveT);saveT=setTimeout(saveNow,400)};
 addEventListener("pagehide",saveNow);document.addEventListener("visibilitychange",()=>{if(document.hidden)saveNow()});
 function freeName(){let i=1;const used=new Set(S.tabs.map(x=>x.name));while(used.has(t("untitled")+i+".py"))i++;return t("untitled")+i+".py"}
@@ -239,11 +239,19 @@ fth.addEventListener("pointerdown",e=>{e.preventDefault();fth.setPointerCapture(
 fth.addEventListener("pointermove",e=>{if(!fdrag)return;const sh=wrapEl.scrollHeight,ch=wrapEl.clientHeight,tr=ch-fth.offsetHeight;if(tr<=0)return;
  const t=Math.max(0,Math.min(tr,fdrag.top+e.clientY-fdrag.y));wrapEl.scrollTop=t/tr*(sh-ch)});
 const fend=()=>{fdrag=null;fth.classList.remove("drag");fsShow()};fth.addEventListener("pointerup",fend);fth.addEventListener("pointercancel",fend);
-ed.addEventListener("input",render);
+/* Keyboards paste long text as many fast events (one per line): render at most a few times a second */
+let lastR=0,rT=0,rCost=30;
+function doRender(){const t0=performance.now();render();lastR=performance.now();rCost=lastR-t0}
+function renderSoon(){S.tabs[S.cur].code=ed.value;if(rT)return;const wait=lastR+Math.max(70,rCost*2.5)-performance.now();
+ if(wait<=0)doRender();else rT=setTimeout(()=>{rT=0;doRender()},wait)}
+ed.addEventListener("input",renderSoon);
+let lastBI=0;
 const ins=s=>{ed.focus();document.execCommand("insertText",false,s)};
 ed.addEventListener("beforeinput",e=>{
+ const nowBI=performance.now(),fast=nowBI-lastBI<90;lastBI=nowBI;
  if(e.isComposing)return;
  if(e.inputType==="insertLineBreak"||e.inputType==="insertParagraph"){
+  if(fast)return; /* part of a paste: keep the text exactly as it is (no auto indent) */
   e.preventDefault();
   const p=ed.selectionStart,b=ed.value.slice(0,p),line=b.slice(b.lastIndexOf("\n")+1);
   let ind=line.match(/^[ \t]*/)[0];
@@ -281,7 +289,7 @@ function saveTab(tb){const a=A();if(!a){toast(t("nopy"));return false}
  let r="";try{r=a.quickSave(tb.name,tb.code,tb.path||"")}catch(e){}
  if(r){tb.path=r;save();toast(t("saved")+r);return true}
  toast(t("noperm"));a.saveAs(tb.name,tb.code);return true}
-async function closeTab(i){const tb=S.tabs[i];
+async function closeTab(i){if(i===S.cur)S.tabs[i].code=ed.value;const tb=S.tabs[i];
  if(tb.code.trim()){const r=await ask(t("closeT"),t("closeM").replace("%",tb.name),[[t("del"),"del","danger"],[t("sv"),"save","pri"],[t("cancel"),"cancel"]]);
   if(r!=="del"&&r!=="save")return;
   if(r==="save"&&!saveTab(tb))return}
