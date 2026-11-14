@@ -18,6 +18,18 @@ android {
             pip { install "pip" }
         }
     }
+    // fixed signing key (if debug.keystore exists in the repo root) so every new APK installs over the old one
+    def pyvoraKs = rootProject.file('debug.keystore')
+    if (pyvoraKs.exists()) {
+        signingConfigs {
+            debug {
+                storeFile pyvoraKs
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
