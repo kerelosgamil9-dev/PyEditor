@@ -211,7 +211,11 @@ _MIME = {"png": "image/png", "gif": "image/gif", "jpg": "image/jpeg", "jpeg": "i
          "webp": "image/webp", "svg": "image/svg+xml", "ppm": "image/x-portable-pixmap"}
 
 
-class PhotoImage:
+class Image:
+    pass
+
+
+class PhotoImage(Image):
     def __init__(self, name=None, cnf=None, master=None, **kw):
         kw.update(cnf or {})
         _n[0] += 1; self._id = _n[0]; _IMGS[self._id] = self; self.name = name or "pyimage%d" % self._id
@@ -241,6 +245,9 @@ class PhotoImage:
     def width(self): r = _query("imgsz", self._id, default=[0, 0]); return int(r[0])
     def height(self): r = _query("imgsz", self._id, default=[0, 0]); return int(r[1])
     def blank(self): _send("imgclr", self._id)
+    def read(self, filename, **k):
+        self._load({"file": filename}); _send("pimg", self._id, self._uri, 0, 0)
+    def data(self, *a, **k): return _query("imgdata", self._id, default="")
     def put(self, data, to=None):
         if isinstance(data, str) and "{" not in data and " " not in data.strip():
             rows = [[data]]
@@ -621,6 +628,25 @@ class Misc:
     def winfo_geometry(self): g = self._g(); return "%dx%d+%d+%d" % (g[2], g[3], g[0], g[1])
     def winfo_atom(self, n): return 0
     def winfo_interps(self): return ()
+    def bindtags(self, tagList=None): return (str(self), self.winfo_class(), str(self.winfo_toplevel()), "all") if tagList is None else None
+    def getboolean(self, s): return getboolean(s)
+    def getdouble(self, s): return float(s)
+    def getint(self, s): return int(s)
+    grid_anchor = send = tk_focusFollowsMouse = _nop
+    def winfo_pathname(self, id, displayof=0): return str(_W.get(id, self))
+    def winfo_atomname(self, i): return ""
+    def winfo_cells(self): return 256
+    winfo_screencells = winfo_cells
+    def winfo_colormapfull(self): return 0
+    def winfo_screen(self): return ":0.0"
+    def winfo_screendepth(self): return 24
+    def winfo_screenvisual(self): return "truecolor"
+    winfo_visual = winfo_screenvisual
+    def winfo_server(self): return ""
+    def winfo_visualid(self): return "0x21"
+    def winfo_visualsavailable(self, includeids=False): return []
+    def winfo_vrootx(self): return 0
+    winfo_vrooty = winfo_vrootx
     def nametowidget(self, name):
         if isinstance(name, Misc): return name
         n = str(name)
@@ -761,6 +787,12 @@ class _Win:
     frame = lambda self: "0x0"
     focusmodel = positionfrom = sizefrom = wm_focusmodel = _nop
     def iconposition(self, *a): return None
+    client = colormapwindows = command = iconmask = iconwindow = manage = _nop
+    wm_aspect = wm_client = wm_command = wm_frame = wm_grid = wm_iconmask = wm_iconposition = wm_iconwindow = wm_manage = _nop
+    wm_positionfrom = wm_sizefrom = _nop
+    def wm_withdraw(self): self.state("withdrawn")
+    def wm_iconify(self): self.state("iconic")
+    def wm_deiconify(self): self.state("normal")
 
 
 class Tk(_Win, Misc):
@@ -880,6 +912,9 @@ class Spinbox(Entry):
         elif "from_" in o: self._val = str(o["from_"])
     def _post(self, o):
         if self._var is None and self._val != "": _send("cfg", self._id, {"val": self._val})
+    def set(self, v): self._set(str(v))
+    identify = lambda self, x, y: ""
+    scan = selection_element = _nop
     def invoke(self, el):
         vs = [str(x) for x in (self._o.get("values") or [])]; d = 1 if el == "buttonup" else -1
         if vs:
@@ -1247,7 +1282,9 @@ class Text(_Scr, Misc):
         if a and a[0] == "modified": return self.edit_modified(*a[1:])
         if a and a[0] in ("undo", "redo"): _send("undo", self._id, a[0])
     def window_create(self, *a, **k): return ""
-    image_create = window_create
+    image_create = window_cget = window_configure = image_cget = image_configure = window_create
+    debug = _nop
+    def yview_pickplace(self, *a): pass
     def window_names(self): return ()
     def dump(self, *a, **k): return []
     def dlineinfo(self, i): return (0, 0, 10, 16, 12)
@@ -1428,6 +1465,14 @@ class Canvas(_Scr, Misc):
         for i in self._ids(t):
             d = deltag if deltag is not None else t
             if d in self._it[i]["t"]: self._it[i]["t"].remove(d)
+    def find(self, what, *a):
+        f = getattr(self, "find_" + what, None)
+        return f(*a) if f else ()
+    def addtag_above(self, new, t):
+        for i in self.find_above(t): self._it[i]["t"].append(new)
+    def addtag_below(self, new, t):
+        for i in self.find_below(t): self._it[i]["t"].append(new)
+    select_item = _nop
     def find_all(self): return tuple(self._ord)
     def find_withtag(self, t): return tuple(self._ids(t))
     def find_overlapping(self, x1, y1, x2, y2):
@@ -1622,7 +1667,9 @@ class PanedWindow(Misc):
     def pane(self, c, **k): return {}
     paneconfig = paneconfigure = pane
     sash_coord = lambda self, i: (0, 0)
-    sash_place = sash_mark = sashpos = proxy_coord = _nop
+    sash_place = sash_mark = sashpos = proxy_coord = proxy = proxy_forget = proxy_place = sash = _nop
+    identify = lambda self, x, y: ""
+    def panecget(self, c, k): return ""
 
 
 class Sizegrip(Misc): _type = "sizegrip"
@@ -1980,6 +2027,16 @@ class ttk_OptionMenu(_T, Menubutton):
         for v in values: m.add_command(label=v, command=lambda v=v: self._var.set(v))
 
 
+class ttk_LabeledScale(ttk_Frame):
+    def __init__(self, master=None, variable=None, from_=0, to=10, **kw):
+        ttk_Frame.__init__(self, master, **kw)
+        self._variable = variable or IntVar(master); self._variable.set(from_)
+        self.label = ttk_Label(self, text=str(from_)); self.scale = ttk_Scale(self, variable=self._variable, from_=from_, to=to)
+        self.scale.pack(fill="x"); self.label.pack()
+        self._variable.trace_add("write", lambda *a: self.label.config(text=str(int(float(self._variable._v)))))
+    value = property(lambda self: self._variable.get(), lambda self, v: self._variable.set(v))
+
+
 # ---------------- event loop ----------------
 def _handle(e):
     t = e.get("t")
@@ -2111,6 +2168,15 @@ class _Dialog(Toplevel):
     def apply(self): pass
 
 
+class _FileDialog:
+    def __init__(self, master=None, title=None): self.master = master; self.title = title; self._sv = ""
+    def go(self, dir_or_file=".", pattern="*", default="", key=None):
+        d = dir_or_file if os.path.isdir(dir_or_file) else os.path.dirname(dir_or_file) or "."
+        r = _asf("open", title=self.title, initialdir=os.path.abspath(d), initialfile=default)
+        return r or None
+    def quit(self, how=None): pass
+
+
 # ---------------- submodules ----------------
 def _mod(name, **attrs):
     m = types.ModuleType("tkinter." + name); m.__dict__.update(attrs); sys.modules["tkinter." + name] = m; return m
@@ -2166,7 +2232,8 @@ def _install():
         askopenfile=lambda mode="r", **k: _file(mode, "open", **k),
         askopenfiles=lambda mode="r", **k: tuple(open(p, mode) for p in (_asf("open", multiple=True, **k) or ())),
         asksaveasfile=lambda mode="w", **k: _file(mode, "save", **k),
-        Open=lambda **k: None, SaveAs=lambda **k: None, Directory=lambda **k: None)
+        Open=lambda **k: None, SaveAs=lambda **k: None, Directory=lambda **k: None,
+        FileDialog=_FileDialog, LoadFileDialog=_FileDialog, SaveFileDialog=_FileDialog)
     def _color(color=None, **k):
         r = _ask("color", k.get("title", ""), "", color if isinstance(color, str) else "#ffffff")
         if not r: return (None, None)
@@ -2186,10 +2253,10 @@ def _install():
                   Menubutton=ttk_Menubutton, Notebook=ttk_Notebook, Panedwindow=ttk_Panedwindow, PanedWindow=ttk_Panedwindow,
                   Progressbar=ttk_Progressbar, Scale=ttk_Scale, Scrollbar=ttk_Scrollbar, Separator=ttk_Separator,
                   Sizegrip=ttk_Sizegrip, Spinbox=ttk_Spinbox, Treeview=ttk_Treeview, OptionMenu=ttk_OptionMenu, Style=Style,
-                  Widget=_T, tclobjs_to_py=lambda d: d, setup_master=lambda m=None: m or _st["root"])
+                  LabeledScale=ttk_LabeledScale, Widget=_T, tclobjs_to_py=lambda d: d, setup_master=lambda m=None: m or _st["root"])
     me.ttk.__all__ = ["Button", "Checkbutton", "Combobox", "Entry", "Frame", "Label", "Labelframe", "LabelFrame", "Menubutton",
                       "Notebook", "Panedwindow", "PanedWindow", "Progressbar", "Radiobutton", "Scale", "Scrollbar", "Separator",
-                      "Sizegrip", "Spinbox", "Style", "Treeview", "OptionMenu", "Widget"]
+                      "Sizegrip", "Spinbox", "Style", "Treeview", "OptionMenu", "LabeledScale", "Widget"]
     # PIL.ImageTk support
     import io
     class _PILPhoto(PhotoImage):
