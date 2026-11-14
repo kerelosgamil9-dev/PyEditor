@@ -14,14 +14,14 @@ object Storage {
         else c.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     } catch (e: Throwable) { false }
 
-    /** "root" = main phone storage itself (no folder), "app" = /PYVORA folder */
+    /** "root" = main phone storage itself (no folder), "app" = /Pyvora folder */
     fun mode(c: Context): String = c.getSharedPreferences("pv", 0).getString("dir", "root") ?: "root"
     fun setMode(c: Context, m: String) { c.getSharedPreferences("pv", 0).edit().putString("dir", m).apply() }
 
     fun dir(c: Context): File? {
         if (!granted(c)) return null
         val base = Environment.getExternalStorageDirectory()
-        val d = if (mode(c) == "app") File(base, "PYVORA") else base
+        val d = if (mode(c) == "app") File(base, "Pyvora") else base
         return try { d.mkdirs(); if (d.canWrite()) d else null } catch (e: Throwable) { null }
     }
 
