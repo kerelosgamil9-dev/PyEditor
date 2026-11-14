@@ -64,7 +64,8 @@ def _query(op, *a, default=None, timeout=3.0):
     t0 = time.time()
     while r not in _qres and not _st["quit"] and time.time() - t0 < timeout:
         _pump(0.02)
-    return _qres.pop(r, default)
+    v = _qres.pop(r, default)
+    return default if v is None else v
 
 
 def _cb(f, *a):
@@ -115,7 +116,7 @@ class Font:
         return int(r) if r is not None else int(len(str(t)) * abs(self.d["s"]) * 0.6 * (1 if self.d["s"] < 0 else 1.333))
     def metrics(self, *a, **k):
         px = abs(self.d["s"]) * (1 if self.d["s"] < 0 else 1.333)
-        m = {"ascent": int(px * .8), "descent": int(px * .25), "linespace": int(px * 1.2), "fixed": 0}
+        m = _query("fmet", self.d, default=None) or {"ascent": int(px * .8), "descent": int(px * .25), "linespace": int(px * 1.2), "fixed": 0}
         return m[a[0].lstrip("-")] if a else m
     def actual(self, *a, **k):
         d = self.configure.__self__.d
@@ -616,10 +617,12 @@ class Misc:
     def winfo_screenheight(self): return _st["h"]
     winfo_vrootwidth = winfo_screenmmwidth = winfo_screenwidth
     winfo_vrootheight = winfo_screenmmheight = winfo_screenheight
-    def winfo_pointerx(self): return 0
-    winfo_pointery = winfo_pointerx
-    def winfo_pointerxy(self): return (0, 0)
-    def winfo_containing(self, x, y): return None
+    def winfo_pointerxy(self):
+        r = _query("ptr", default=[0, 0]); return (int(r[0]), int(r[1]))
+    def winfo_pointerx(self): return self.winfo_pointerxy()[0]
+    def winfo_pointery(self): return self.winfo_pointerxy()[1]
+    def winfo_containing(self, x, y, displayof=0):
+        r = _query("at", int(x), int(y), default=0); return _W.get(r)
     def winfo_depth(self): return 24
     def winfo_rgb(self, c):
         r = _query("rgb", str(c), default=[0, 0, 0]); return tuple(int(x) * 257 for x in r)
@@ -759,8 +762,12 @@ class _Win:
         if s is None or s == "":
             if wm["geo"]: return wm["geo"]
             g = self._g(); return "%dx%d+%d+%d" % (g[2], g[3], g[0], g[1])
-        m = re.match(r"=?(\d+)x(\d+)", str(s))
+        m = re.match(r"=?(\d+)x(\d+)(?:([+-]\d+)([+-]\d+))?", str(s))
         if m and self._type == "root": _send("win", {"geo": [int(m.group(1)), int(m.group(2))]})
+        elif m and self._type == "top":
+            g = [int(m.group(1)), int(m.group(2))]
+            if m.group(3) is not None: g += [int(m.group(3)), int(m.group(4))]
+            _send("cfg", self._id, {"tg": g})
         wm["geo"] = str(s)
     wm_geometry = geometry
     def protocol(self, name=None, func=None):
@@ -776,7 +783,16 @@ class _Win:
     def withdraw(self): self.state("withdrawn")
     def iconify(self): self.state("iconic")
     def deiconify(self): self.state("normal")
-    def attributes(self, *a, **k): return 0 if a and len(a) == 1 else None
+    def attributes(self, *a, **k):
+        at = self._wmi().setdefault("attr", {"alpha": 1.0, "topmost": 0, "fullscreen": 0, "zoomed": 0, "disabled": 0, "toolwindow": 0})
+        if not a and not k: return tuple(x for kv in at.items() for x in ("-" + kv[0], kv[1]))
+        if len(a) == 1 and not k: return at.get(str(a[0]).lstrip("-"), 0)
+        items = list(zip(a[::2], a[1::2])) + [("-" + x, y) for x, y in k.items()]
+        for n, v in items:
+            n = str(n).lstrip("-"); at[n] = v
+            if n == "alpha":
+                try: _send("cfg", self._id, {"alpha": float(v)})
+                except (TypeError, ValueError): pass
     wm_attributes = attributes
     def resizable(self, w=None, h=None): return (1, 1)
     wm_resizable = resizable
@@ -1038,6 +1054,7 @@ class Text(_Scr, Misc):
     def _pre(self, o):
         Misc._pre(self, o)
         self._tg = {}; self._mk = {}; self._cur = [0, 0]; self._tp = 0; self._tbind = {}; self._mod = False; self._lc = None
+        self._embs = []; self._ec = 0; self._hadembs = False
     def _s(self): return self._val + "\n"
     def _wr(self): return self._o.get("state", "normal") != "disabled"
     def _lcof(self, off):
@@ -1056,7 +1073,10 @@ class Text(_Scr, Misc):
         elif b == "insert": off = self._cur[1]
         elif b == "current": off = self._lc if self._lc is not None else self._cur[1]
         elif b == "anchor": off = self._cur[0]
-        elif b.startswith("@"): off = self._lc if self._lc is not None else self._cur[1]
+        elif b.startswith("@"):
+            try: xx, yy = b[1:].split(","); r = _query("tidx", self._id, int(xx), int(yy), default=None)
+            except Exception: r = None
+            off = int(r) if r is not None else (self._lc if self._lc is not None else self._cur[1])
         elif b in ("sel.first", "sel.last"):
             a, bb = sorted(self._cur)
             if a == bb: raise TclError('text doesn\'t contain any characters tagged with "sel"')
@@ -1129,10 +1149,20 @@ class Text(_Scr, Misc):
         vis = [n for n, st in cfg.items() if st]
         rg = [[s, e, n] for n in vis for s, e in self._tg[n]["rg"]]
         _send("ttag", self._id, {"rg": rg, "cfg": {n: cfg[n] for n in vis}, "ord": sorted(vis, key=lambda n: self._tg[n]["n"])})
+        if self._embs or self._hadembs:
+            pos = [i for i, ch in enumerate(self._val) if ch == "\ufffc"]
+            es = sorted(enumerate(self._embs), key=lambda x: (self._mk.get(x[1]["m"], [0])[0], x[0]))
+            es = [e for _, e in es][:len(pos)]
+            lst = []
+            for e in es:
+                if e["kind"] == "win" and e["w"] is not None: lst.append({"k": "win", "id": e["w"]._id})
+                elif e["kind"] == "img" and e["img"] is not None: lst.append({"k": "img", "id": e["img"]._id})
+                else: lst.append({"k": "img", "id": 0})
+            self._hadembs = bool(lst); _send("temb", self._id, lst)
     # ---- public API
     def get(self, a="1.0", b=None):
         s = self._s(); p = self._ix(a); q = self._ix(b) if b is not None else p + 1
-        return s[p:q]
+        return s[p:q].replace("\ufffc", "")
     def insert(self, index, chars, *args):
         if not self._wr(): return
         p = min(self._ix(index), len(self._val)); items = [chars] + list(args); j = 0
@@ -1281,11 +1311,26 @@ class Text(_Scr, Misc):
     def edit(self, *a, **k):
         if a and a[0] == "modified": return self.edit_modified(*a[1:])
         if a and a[0] in ("undo", "redo"): _send("undo", self._id, a[0])
-    def window_create(self, *a, **k): return ""
-    image_create = window_cget = window_configure = image_cget = image_configure = window_create
+    def _embed(self, kind, index, w, img, o):
+        p = min(self._ix(index), len(self._val)); self._ins(p, "\ufffc", None)
+        self._ec += 1; name = "\x00e%d" % self._ec; self._mk[name] = [p, "right"]
+        self._embs.append({"m": name, "kind": kind, "w": w, "img": img, "o": o}); self._pushv()
+        return str(w) if w is not None else (img.name if img is not None else "")
+    def window_create(self, index, cnf=None, **kw):
+        o = dict(cnf or {}); o.update(kw); w = o.get("window")
+        if w is None and callable(o.get("create")): w = o["create"]()
+        return self._embed("win", index, w, None, o)
+    def image_create(self, index, cnf=None, **kw):
+        o = dict(cnf or {}); o.update(kw); im = o.get("image")
+        if not isinstance(im, PhotoImage): im = next((i for i in _IMGS.values() if i.name == im), None)
+        return self._embed("img", index, None, im, o)
+    def window_names(self): return tuple(str(e["w"]) for e in self._embs if e["w"] is not None)
+    def image_names(self): return tuple(e["img"].name for e in self._embs if e["img"] is not None)
+    def window_cget(self, i, k): return ""
+    image_cget = window_cget
+    window_configure = image_configure = lambda self, *a, **k: None
     debug = _nop
     def yview_pickplace(self, *a): pass
-    def window_names(self): return ()
     def dump(self, *a, **k): return []
     def dlineinfo(self, i): return (0, 0, 10, 16, 12)
     def bbox(self, i):
@@ -1520,7 +1565,19 @@ class Canvas(_Scr, Misc):
     def focus(self, *a): return ""
     def itemfocus(self, *a): return ""
     select_clear = select_from = select_to = select_adjust = icursor = dchars = insert = index = _nop
-    def postscript(self, **k): raise TclError("canvas postscript is not supported on Android")
+    def postscript(self, **k):
+        r = _query("cvps", self._id, default=None, timeout=20)
+        if not r: raise TclError("postscript: could not draw the canvas")
+        w, h, hx = r["w"], r["h"], r["hex"]
+        body = "\n".join(hx[i:i + 78] for i in range(0, len(hx), 78))
+        ps = ("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 " + str(w) + " " + str(h) + "\n%%EndComments\ngsave\n" + str(w) + " " + str(h) +
+              " scale\n/pix " + str(w * 3) + " string def\n" + str(w) + " " + str(h) + " 8 [" + str(w) + " 0 0 -" + str(h) + " 0 " + str(h) +
+              "]\n{currentfile pix readhexstring pop}\nfalse 3 colorimage\n" + body + "\ngrestore\nshowpage\n%%EOF\n")
+        f = k.get("file")
+        if f:
+            with open(f, "w") as fh: fh.write(ps)
+            return ""
+        return ps
     def _tagfire(self, e):
         cat = {"ienter": "enter", "ileave": "leave"}.get(e.get("cat"), e.get("cat")); it = e.get("it", 0)
         if not it or not self._tb: return

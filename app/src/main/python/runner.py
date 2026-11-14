@@ -594,7 +594,7 @@ def _prompt(wd):
 
 def shell(b, wd, pub=""):
     d = _setup(b, wd, pub)
-    print("PYVORA Terminal  (help)   —  " + _HOME)
+    print("Pyvora Terminal  (help)   —  " + _HOME)
     while True:
         sys.stdout.write(_prompt(wd))
         line = b.readLine().strip()
