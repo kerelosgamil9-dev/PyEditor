@@ -73,7 +73,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 </div>
 <div id="scrim"></div>
 <div id="drawer">
- <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#3730A3"/></linearGradient><linearGradient id="lf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#C7D2FE"/></linearGradient></defs><rect width="108" height="108" rx="26" fill="url(#lb)"/><path fill-rule="evenodd" fill="url(#lf)" d="M40,28H58A20,20 0 0 1 58,68H48V76A6,6 0 0 1 42,82H40A6,6 0 0 1 34,76V34A6,6 0 0 1 40,28ZM52,38L52,58L69,48Z"/><path fill="#22D3EE" d="M58,76H77A3,3 0 0 1 77,82H58A3,3 0 0 1 58,76Z"/></svg>Pyvora</div>
+ <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1020"/><stop offset="1" stop-color="#312E81"/></linearGradient><radialGradient id="lg" cx="86" cy="20" r="72" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7C83FF" stop-opacity=".5"/><stop offset="1" stop-color="#7C83FF" stop-opacity="0"/></radialGradient><linearGradient id="lf" gradientUnits="userSpaceOnUse" x1="34" y1="26" x2="76" y2="84"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#C7D2FE"/></linearGradient></defs><rect width="108" height="108" rx="26" fill="url(#lb)"/><rect width="108" height="108" rx="26" fill="url(#lg)"/><g transform="translate(54 54) scale(.92) translate(-54 -54) translate(-2.5 0)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path transform="translate(0 1.8)" stroke="#000" stroke-opacity=".3" stroke-width="9.5" d="M40,80V30H55A14.5,14.5 0 0 1 55,59H40"/><path stroke="url(#lf)" stroke-width="9.5" d="M40,80V30H55A14.5,14.5 0 0 1 55,59H40"/><path fill="#22D3EE" stroke="none" d="M50.38,38.81Q49.00,38.00 49.00,39.60L49.00,49.40Q49.00,51.00 50.38,50.19L58.62,45.31Q60.00,44.50 58.62,43.69Z"/><path d="M57,79.5H75" stroke="#22D3EE" stroke-opacity=".25" stroke-width="11"/><path d="M57,79.5H75" stroke="#22D3EE" stroke-width="6.5"/></g></svg>Pyvora</div>
  <button data-a="new">＋ <span data-i="new"></span></button>
  <button data-a="save">💾 <span data-i="save"></span></button>
  <button data-a="term">⌨ <span data-i="term"></span></button>
@@ -241,13 +241,26 @@ const fend=()=>{fdrag=null;fth.classList.remove("drag");fsShow()};fth.addEventLi
 /* Keyboards paste long text as many fast events (one per line): render at most a few times a second */
 let lastR=0,rT=0,rCost=30;
 function doRender(){const t0=performance.now();render();lastR=performance.now();rCost=lastR-t0}
-function renderSoon(){S.tabs[S.cur].code=ed.value;if(rT)return;const wait=lastR+Math.max(70,rCost*2.5)-performance.now();
+function renderSoon(){S.tabs[S.cur].code=ed.value;clearTimeout(hT);hT=setTimeout(hsnap,500);if(rT)return;const wait=lastR+Math.max(70,rCost*2.5)-performance.now();
  if(wait<=0)doRender();else rT=setTimeout(()=>{rT=0;doRender()},wait)}
 ed.addEventListener("input",renderSoon);
 let lastBI=0;
 const ins=s=>{ed.focus();document.execCommand("insertText",false,s)};
+/* own undo history (so very large pastes can bypass the slow browser insert) */
+let H=[],hi=-1,hT=0;
+function hsnap(){const v=ed.value;if(hi>=0&&H[hi]&&H[hi].v===v)return;H=H.slice(0,hi+1);H.push({v:v,s:ed.selectionStart,e:ed.selectionEnd});if(H.length>(v.length>200000?8:50))H.shift();hi=H.length-1}
+function hreset(){H=[{v:ed.value,s:0,e:0}];hi=0}
+function happly(h){ed.value=h.v;try{ed.setSelectionRange(h.s,h.e)}catch(e){}doRender();ed.focus()}
+function hundo(){clearTimeout(hT);hsnap();if(hi>0){hi--;happly(H[hi])}}
+function hredo(){if(hi<H.length-1){hi++;happly(H[hi])}}
+function scrollCaret(){const pos=ed.selectionEnd,v=ed.value;let n=0,i=-1;while((i=v.indexOf("\n",i+1))>=0&&i<pos)n++;const lh=parseFloat(getComputedStyle(ed).lineHeight)||23,y=8+n*lh,w=wrapEl;
+ if(y<w.scrollTop||y>w.scrollTop+w.clientHeight-lh*2)w.scrollTop=Math.max(0,y-w.clientHeight/2)}
+function fastInsert(txt){clearTimeout(hT);hsnap();const a=ed.selectionStart,b=ed.selectionEnd;ed.setRangeText(txt,a,b,"end");doRender();hsnap();scrollCaret()}
 ed.addEventListener("beforeinput",e=>{
  const nowBI=performance.now(),fast=nowBI-lastBI<90;lastBI=nowBI;
+ const bigTxt=t=>t&&t.length>300&&t.indexOf("\n")>=0;
+ if(e.inputType==="insertFromPaste"){const d=e.dataTransfer?e.dataTransfer.getData("text/plain"):"";if(bigTxt(d)){e.preventDefault();fastInsert(d.replace(/\r\n?/g,"\n"));return}}
+ if(e.inputType==="insertText"&&bigTxt(e.data)){e.preventDefault();fastInsert(e.data.replace(/\r\n?/g,"\n"));return}
  if(e.isComposing)return;
  if(e.inputType==="insertLineBreak"||e.inputType==="insertParagraph"){
   if(fast)return; /* part of a paste: keep the text exactly as it is (no auto indent) */
@@ -269,7 +282,7 @@ ed.addEventListener("beforeinput",e=>{
 });
 ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();e.shiftKey?dedent():ins("    ")}});
 function dedent(){const p=ed.selectionStart,s=ed.value.lastIndexOf("\n",p-1)+1,m=ed.value.slice(s).match(/^( {1,4}|\t)/);if(m){ed.setSelectionRange(s,s+m[0].length);ins("")}}
-function load(){ed.value=S.tabs[S.cur].code;render();drawTabs()}
+function load(){ed.value=S.tabs[S.cur].code;render();drawTabs();hreset();wrapEl.scrollTop=0}
 function drawTabs(){
  const el=$("tabs");el.innerHTML="";
  S.tabs.forEach((tb,i)=>{const d=document.createElement("div");d.className="tab"+(i===S.cur?" on":"");
@@ -317,8 +330,8 @@ const A=()=>window.Android||null;
 const need=f=>A()?f(A()):toast(t("nopy"));
 $("bRun").onclick=()=>need(a=>a.run(ed.value,S.tabs[S.cur].name));
 $("bOpen").onclick=()=>need(a=>a.openFile());
-$("bUndo").onclick=()=>{ed.focus();document.execCommand("undo")};
-$("bRedo").onclick=()=>{ed.focus();document.execCommand("redo")};
+$("bUndo").onclick=hundo;
+$("bRedo").onclick=hredo;
 const menu=on=>{$("drawer").classList.toggle("show",on);$("scrim").classList.toggle("show",on)};
 $("bMenu").onclick=()=>menu(true);$("scrim").onclick=()=>menu(false);
 document.querySelectorAll("#drawer button").forEach(b=>b.onclick=()=>{menu(false);const a=b.dataset.a;
