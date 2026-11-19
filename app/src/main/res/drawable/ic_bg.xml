@@ -5,16 +5,32 @@
     <path android:pathData="M0,0H108V108H0Z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="108" android:endY="108">
-                <item android:offset="0" android:color="#0F172A"/>
-                <item android:offset="1" android:color="#3730A3"/>
+                <item android:offset="0" android:color="#0B1020"/>
+                <item android:offset="1" android:color="#312E81"/>
             </gradient>
         </aapt:attr>
     </path>
     <path android:pathData="M0,0H108V108H0Z">
         <aapt:attr name="android:fillColor">
-            <gradient android:type="radial" android:centerX="84" android:centerY="22" android:gradientRadius="70">
-                <item android:offset="0" android:color="#66818CF8"/>
-                <item android:offset="1" android:color="#00818CF8"/>
+            <gradient android:type="radial" android:centerX="86" android:centerY="20" android:gradientRadius="72">
+                <item android:offset="0" android:color="#807C83FF"/>
+                <item android:offset="1" android:color="#007C83FF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0H108V108H0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="14" android:centerY="100" android:gradientRadius="62">
+                <item android:offset="0" android:color="#3022D3EE"/>
+                <item android:offset="1" android:color="#0022D3EE"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0H108V56H0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="56">
+                <item android:offset="0" android:color="#20FFFFFF"/>
+                <item android:offset="1" android:color="#00FFFFFF"/>
             </gradient>
         </aapt:attr>
     </path>
