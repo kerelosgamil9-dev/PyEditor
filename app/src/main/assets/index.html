@@ -184,13 +184,15 @@ try{Object.assign(S,JSON.parse(localStorage.getItem("pyed")||"{}"))}catch(e){}
 if(!S.ui)S.ui=S.theme||"Dark+";if(!S.syn)S.syn=S.theme||"Dark+";delete S.theme;
 if(!EDT[S.ui])S.ui="Dark+";if(S.syn!=="Custom"&&!SYN[S.syn])S.syn="Dark+";
 if(!S.custom)S.custom=Object.fromEntries(SK.map((k,i)=>[k,SYN["Dark+"].split(" ")[i]]));
+/* the old default page. A web file is created EMPTY now; an untouched copy of this page is blanked once */
+const HTML_TPL=["<!DOCTYPE html>",'<html lang="en">',"<head>",'  <meta charset="UTF-8">','  <meta name="viewport" content="width=device-width, initial-scale=1.0">',"  <title>Pyvora</title>","  <style>","    body { font-family: sans-serif; text-align: center; padding: 2rem; }","  </style>","</head>","<body>","  <h1>Hello, World!</h1>","  <script>",'    console.log("Hello from Pyvora");',"  <\/script>","</body>","</html>",""].join("\n");
 /* two workspaces: Python files and web files (HTML / CSS / JS). Old saves had one list: it becomes the Python one */
 if(!S.ws)S.ws={py:{tabs:Array.isArray(S.tabs)?S.tabs:[],cur:+S.cur||0},html:{tabs:[],cur:0}};
 delete S.tabs;delete S.cur;
 if(S.mode!=="html")S.mode="py";
 for(const m of["py","html"]){const w=S.ws[m]=S.ws[m]||{tabs:[],cur:0};
  w.tabs=(Array.isArray(w.tabs)?w.tabs:[]).filter(x=>x&&typeof x.name==="string");
- w.tabs.forEach(x=>{if(typeof x.code!=="string")x.code="";if(x.path==null)x.path="";if(m==="py"&&x.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")x.code=""});
+ w.tabs.forEach(x=>{if(typeof x.code!=="string")x.code="";if(x.path==null)x.path="";if(m==="py"&&x.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")x.code="";if(m==="html"&&x.code===HTML_TPL)x.code=""});
  if(!(w.cur>=0&&w.cur<w.tabs.length))w.cur=0}
 const W=()=>S.ws[S.mode],CT=()=>W().tabs[W().cur];
 const t=k=>I18N[S.lang][k];
@@ -199,9 +201,8 @@ let saveT=0;const save=()=>{clearTimeout(saveT);saveT=setTimeout(saveNow,400)};
 addEventListener("pagehide",saveNow);document.addEventListener("visibilitychange",()=>{if(document.hidden)saveNow()});
 function freeName(){let i=1;const used=new Set(W().tabs.map(x=>x.name));while(used.has(t("untitled")+i+".py"))i++;return t("untitled")+i+".py"}
 const newTab=(name,code)=>({name:name||freeName(),code:code||"",path:""});
-const HTML_TPL=["<!DOCTYPE html>",'<html lang="en">',"<head>",'  <meta charset="UTF-8">','  <meta name="viewport" content="width=device-width, initial-scale=1.0">',"  <title>Pyvora</title>","  <style>","    body { font-family: sans-serif; text-align: center; padding: 2rem; }","  </style>","</head>","<body>","  <h1>Hello, World!</h1>","  <script>",'    console.log("Hello from Pyvora");',"  <\/script>","</body>","</html>",""].join("\n");
 if(!S.ws.py.tabs.length)S.ws.py.tabs.push(newTab("main.py"));
-if(!S.ws.html.tabs.length)S.ws.html.tabs.push({name:"index.html",code:HTML_TPL,path:""});
+if(!S.ws.html.tabs.length)S.ws.html.tabs.push({name:"index.html",code:"",path:""});
 function applyTheme(){const r=document.documentElement.style,e=EDT[S.ui].split(" "),
  ev={bg:e[0],ebg:e[0],bar:e[1],fg:e[2],mut:e[3],emut:e[3],sel:e[4],esel:e[4],ac:e[5]};for(const k in ev)r.setProperty("--"+k,ev[k]);
  const p=S.syn==="Custom"?S.custom:Object.fromEntries(SK.map((k,i)=>[k,SYN[S.syn].split(" ")[i]]));
@@ -427,8 +428,12 @@ ed.addEventListener("beforeinput",e=>{
   }
  }
 });
-ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();e.shiftKey?dedent():ins(IND())}});
+ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();if(e.shiftKey)dedent();else if(!tryBang())ins(IND())}});
 const IND=()=>curLang()==="py"?"    ":"  ";
+/* "!" alone on a line + Tab  ->  the HTML5 page skeleton (like Emmet) */
+function tryBang(){if(curLang()!=="html"||ed.selectionStart!==ed.selectionEnd)return false;
+ const p=ed.selectionStart,b=ed.value.slice(0,p),ls=b.lastIndexOf("\n")+1;if(b.slice(ls).trim()!=="!")return false;
+ ed.setSelectionRange(ls,p);ins("");insSnip(SNIP.html[0][1]);return true}
 function dedent(){const U=IND().length,p=ed.selectionStart,s=ed.value.lastIndexOf("\n",p-1)+1,m=ed.value.slice(s).match(U===4?/^( {1,4}|\t)/:/^( {1,2}|\t)/);if(m){ed.setSelectionRange(s,s+m[0].length);ins("");const q=Math.max(s,p-m[0].length);ed.setSelectionRange(q,q)}}
 const PAIR={"{":"}","[":"]","(":")"};
 /* Enter: keeps the indent; Python indents after ":", web files after { [ ( and after an open tag; between {} or <p></p> it opens a blank middle line */
@@ -479,7 +484,7 @@ async function addTab(){
  if(S.mode==="html"){
   const r=await ask(t("new"),"",[[t("tHtml"),"html"],[t("tCss"),"css"],[t("tJs"),"js"],[t("cancel"),"x"]]);
   if(r==="x")return;
-  W().tabs.push({name:freeWebName(r),code:r==="html"?HTML_TPL:"",path:""})
+  W().tabs.push({name:freeWebName(r),code:"",path:""})
  }else W().tabs.push(newTab());
  W().cur=W().tabs.length-1;load();save();ed.focus()}
 async function renameTab(i){const tb=W().tabs[i];if(!tb)return;
@@ -541,7 +546,7 @@ function drawKeys(){
  const items=L==="py"?(kmode==="sym"?SYM:KWS):(kmode==="sym"?SYMW:SNIP[L]);
  items.forEach(k=>{const sn=Array.isArray(k),lab=sn?k[0]:k;const b=document.createElement("button");b.textContent=lab==="Tab"?"⇥":lab;
   b.addEventListener("pointerdown",e=>e.preventDefault());
-  b.onclick=()=>{if(sn)insSnip(k[1]);else if(L==="py"&&kmode==="kw")insKw(k);else ins(k==="Tab"?IND():k)};kb.appendChild(b)});
+  b.onclick=()=>{if(sn)insSnip(k[1]);else if(L==="py"&&kmode==="kw")insKw(k);else if(k==="Tab"){if(!tryBang())ins(IND())}else ins(k)};kb.appendChild(b)});
  tb.forEach(b=>b.classList.toggle("on",b.dataset.k===kmode))}
 document.querySelectorAll("#kt button").forEach(b=>{b.addEventListener("pointerdown",e=>e.preventDefault());b.onclick=()=>{kmode=b.dataset.k;drawKeys()}});
 
@@ -566,7 +571,7 @@ function runHtml(){const a=A();if(!a){toast(t("nopy"));return}
  if(langOf(main.name)!=="html")main=tabs.find(x=>/^index\.html?$/i.test(x.name))||tabs.find(x=>langOf(x.name)==="html");
  if(!main){toast(t("nohtml"));return}
  const files={};tabs.forEach(x=>{files[x.name]=x.code});
- try{a.preview(main.name,JSON.stringify(files))}catch(e){toast(String(e))}}
+ try{a.preview(main.name,JSON.stringify(files),main.path||"")}catch(e){toast(String(e))}}
 $("bRun").onclick=()=>{if(S.mode==="html")runHtml();else need(a=>a.run(ed.value,CT().name))};
 $("bOpen").onclick=()=>need(a=>a.openFile());
 $("bUndo").onclick=hundo;
