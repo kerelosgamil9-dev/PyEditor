@@ -7,10 +7,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - uses: gradle/actions/setup-gradle@v3
-        with: { gradle-version: 8.7 }
-      - run: gradle assembleDebug --no-daemon
+      # Chaquopy 17 needs a build-time Python with the SAME version as the app (3.11)
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.14.3 }
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      # Optional: sign with your OWN key (needed for Google Play). Without these secrets the repo keystore is used.
+      - name: Release key (optional)
+        env:
+          KS_B64: ${{ secrets.PYVORA_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.PYVORA_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.PYVORA_KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.PYVORA_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "PYVORA_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "PYVORA_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "PYVORA_KEY_ALIAS=$KS_ALIAS" >> "$GITHUB_ENV"
+            echo "PYVORA_KEY_PASSWORD=${KS_KEYPASS:-$KS_PASS}" >> "$GITHUB_ENV"
+            echo "Using the release key from secrets"
+          else
+            echo "No release key secrets: using the keystore in the repo"
+          fi
+      - name: Build
+        run: gradle assemblePlayRelease assembleFullRelease bundlePlayRelease --no-daemon --stacktrace
+      - name: Collect files
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/play/release/*.apk dist/Pyvora-play.apk
+          cp app/build/outputs/apk/full/release/*.apk dist/Pyvora-full.apk
+          cp app/build/outputs/bundle/playRelease/*.aab dist/Pyvora-play.aab
+          ls -la dist
       - uses: actions/upload-artifact@v4
         with:
-          name: PYVORA-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: Pyvora-APK
+          path: dist/*
