@@ -65,10 +65,16 @@ class TurtleScreen:
         self._root = _tk.Tk()
         self._root.title("Python Turtle Graphics")
         # the canvas gets the size of the whole drawing area (a bare canvas is only 378x265 and would leave the rest empty)
-        sw, sh = self._root.winfo_screenwidth(), self._root.winfo_screenheight()
+        self._root.update()
+        try:
+            rw, rh = self._root.winfo_width(), self._root.winfo_height()
+        except Exception:
+            rw = rh = 0
+        sw = rw if rw >= 100 else self._root.winfo_screenwidth()
+        sh = rh if rh >= 100 else self._root.winfo_screenheight()
         if sw < 50 or sh < 50: sw, sh = 360, 640
         self._cv = _tk.Canvas(self._root, width=int(sw), height=int(sh), bg="white", highlightthickness=0, bd=0)
-        self._cv.pack()
+        self._cv.pack(fill="both", expand=True)
         self._root.update()
         try:
             w, h = self._cv.winfo_width(), self._cv.winfo_height()
