@@ -220,18 +220,29 @@ open class ConsoleActivity : Activity() {
         root.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(row)
         setContentView(root)
+        Edge.install(root)
         updateRow()
 
         val wd = filesDir.absolutePath
         val pub = Storage.path(this)
-        val code = intent.getStringExtra("code") ?: ""
+        // only the sideload build can lack a permission; the Play build always has its own folder
+        val warn = Storage.allFilesBuild && !Storage.granted(this)
+        var code = intent.getStringExtra("code") ?: ""
+        val codePath = intent.getStringExtra("codePath")
+        if (codePath != null) {
+            try {
+                val cf = java.io.File(codePath)
+                code = cf.readText(Charsets.UTF_8)
+                cf.delete()
+            } catch (e: Exception) { }
+        }
         thread {
             try {
                 val m = Python.getInstance().getModule("runner")
                 when (mode) {
                     "term" -> m.callAttr("shell", io, wd, pub)
                     "pip" -> m.callAttr("pip_page", io, wd, pub)
-                    else -> m.callAttr("run", io, code, name, wd, pub)
+                    else -> m.callAttr("run", io, code, name, wd, pub, warn)
                 }
             } catch (e: Throwable) { io.write("\n$e\n") }
             io.write(if (mode == "run") "\n[Finished ✔]\n" else "\n[Closed]\n")
