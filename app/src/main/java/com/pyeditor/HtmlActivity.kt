@@ -11,6 +11,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextUtils
@@ -70,6 +71,7 @@ class HtmlActivity : Activity() {
     private lateinit var consInput: EditText
     private lateinit var previewDir: File
     private var wsDir: File? = null
+    private var baseDir: File? = null
     private var main = "index.html"
     private var errors = 0
     private var fileCb: ValueCallback<Array<Uri>>? = null
@@ -128,8 +130,17 @@ class HtmlActivity : Activity() {
     }
 
     // ------------------------------------------------------------------ the virtual web server
+    /** the folder of the saved page may be served, but never the whole phone storage or the file-system root */
+    private fun safeBase(d: File): Boolean {
+        return try {
+            val c = d.canonicalPath
+            val sd = Environment.getExternalStorageDirectory().canonicalPath
+            c != "/" && c != sd && !sd.startsWith(c + File.separator)
+        } catch (e: Exception) { false }
+    }
+
     private fun findFile(rel: String): File? {
-        val roots = arrayOf<File?>(previewDir, wsDir)
+        val roots = arrayOf<File?>(previewDir, baseDir, wsDir)
         for (root in roots) {
             if (root == null) continue
             val f = Storage.resolve(root, rel) ?: continue
@@ -149,13 +160,14 @@ class HtmlActivity : Activity() {
         val r: WebResourceRequest = req ?: return null
         val u: Uri = r.url ?: return null
         if (u.host != HOST) return null
-        val method: String = r.method ?: "GET"
-        if (method != "GET" && method != "HEAD") return resp(405, "Method Not Allowed", "text/plain", "405".toByteArray())
-
+        // any method gets the file (a form with method="post" just shows the page again, like a static host)
         var rel = Uri.decode(u.encodedPath ?: "/").trimStart('/')
         if (rel.isEmpty()) rel = main
         var f = findFile(rel)
         if (f != null && f.isDirectory) f = findFile(rel.trimEnd('/') + "/index.html")
+        if ((f == null || !f.isFile) && rel == "favicon.ico") {
+            return resp(204, "No Content", "image/x-icon", ByteArray(0))   // browsers always ask for it: stay quiet
+        }
         if (f == null || !f.isFile) {
             logLine(2, "404 Not Found: /$rel")
             val safe = rel.replace("&", "&amp;").replace("<", "&lt;")
@@ -233,6 +245,8 @@ class HtmlActivity : Activity() {
         // With "All files access" in root mode the whole phone storage would be readable by the page: do not serve it.
         wsDir = if (Storage.granted(this) && Storage.mode(this) == "root") null else Storage.dir(this)
         main = intent.getStringExtra("main") ?: "index.html"
+        val bd = intent.getStringExtra("dir")
+        baseDir = if (!bd.isNullOrEmpty()) File(bd).takeIf { it.isDirectory && safeBase(it) } else null
 
         val fg = Color.parseColor("#d4d4d4")
         val bar = Color.parseColor("#252526")

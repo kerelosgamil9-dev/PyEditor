@@ -130,7 +130,7 @@ class MainActivity : Activity() {
         // ---------------------------------------------------------------- HTML preview
         /** Writes every open web file (html / css / js ...) to a temp folder and opens the preview screen. */
         @JavascriptInterface
-        fun preview(main: String, filesJson: String) {
+        fun preview(main: String, filesJson: String, mainPath: String) {
             try {
                 val dir = File(cacheDir, "preview")
                 dir.deleteRecursively()
@@ -144,7 +144,13 @@ class MainActivity : Activity() {
                     f.writeText(o.optString(name, ""), Charsets.UTF_8)
                 }
                 val m = Storage.safeRel(main) ?: return
-                runOnUiThread { startActivity(Intent(this@MainActivity, HtmlActivity::class.java).putExtra("main", m)) }
+                val i = Intent(this@MainActivity, HtmlActivity::class.java).putExtra("main", m)
+                // the folder of the saved page: its images / data.json / other files are served to the preview too
+                if (mainPath.isNotEmpty()) {
+                    val pd = File(mainPath).parentFile
+                    if (pd != null && pd.isDirectory) i.putExtra("dir", pd.absolutePath)
+                }
+                runOnUiThread { startActivity(i) }
             } catch (e: Throwable) {
                 js("toast(${JSONObject.quote(e.toString())})")
             }
