@@ -465,10 +465,10 @@ def _exec(code, name):
         report_exc(e)
 
 
-def run(b, code, name, wd, pub=""):
+def run(b, code, name, wd, pub="", warn=False):
     _setup(b, wd, pub)
-    if not pub:
-        sys.stderr.write("⚠ مفيش صلاحية الملفات: الملفات هتتحفظ جوه التطبيق بس. فعّلها من القائمة ☰ ← صلاحية الملفات.\n")
+    if warn:
+        sys.stderr.write("⚠ مفيش صلاحية الملفات: الملفات هتتحفظ جوه فولدر التطبيق بس. فعّلها من القائمة ☰ ← صلاحية الملفات.\n")
     _exec(code, name)
 
 
