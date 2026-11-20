@@ -33,15 +33,13 @@ jobs:
             echo "No release key secrets: using the keystore in the repo"
           fi
       - name: Build
-        run: gradle assemblePlayRelease assembleFullRelease bundlePlayRelease --no-daemon --stacktrace
+        run: gradle assembleFullRelease --no-daemon --stacktrace
       - name: Collect files
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/play/release/*.apk dist/Pyvora-play.apk
-          cp app/build/outputs/apk/full/release/*.apk dist/Pyvora-full.apk
-          cp app/build/outputs/bundle/playRelease/*.aab dist/Pyvora-play.aab
+          cp app/build/outputs/apk/full/release/*.apk dist/Pyvora.apk
           ls -la dist
       - uses: actions/upload-artifact@v4
         with:
           name: Pyvora-APK
-          path: dist/*
+          path: dist/Pyvora.apk
