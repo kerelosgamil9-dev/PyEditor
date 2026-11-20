@@ -59,11 +59,25 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 .box label{display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-size:15px}
 .box select,.box input[type=number]{background:var(--bg);color:var(--fg);border:1px solid #8886;border-radius:6px;padding:6px;font-size:15px}
 #toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#000c;color:#fff;padding:8px 16px;border-radius:20px;display:none;z-index:10;font-size:14px}
+
+.pill{font-size:12px!important;font-weight:700;min-width:46px!important;height:30px!important;border:1px solid #8886!important;border-radius:15px!important;margin:0 4px;letter-spacing:.5px}
+.seg{display:flex;margin:12px 14px 6px;background:var(--bg);border-radius:10px;padding:3px;gap:3px}
+#drawer .seg button{flex:1;justify-content:center;gap:6px;padding:10px 4px;border-radius:8px;font-size:15px;width:auto}
+#drawer .seg button.on{background:var(--ac);color:#fff}
+#dM input{width:100%;background:var(--bg);color:var(--fg);border:1px solid #8886;border-radius:8px;padding:10px;font-size:16px;direction:ltr}
+#fm{display:none;position:fixed;inset:0;background:#0008;z-index:9;align-items:center;justify-content:center}
+#fm.show{display:flex}
+#fmL{max-height:50vh;overflow-y:auto;font-size:14px}
+.frow{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #8883}
+.frow .fnm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left}
+.frow small{opacity:.6;white-space:nowrap}
+.frow button{background:none;border:0;color:var(--fg);font-size:18px;min-width:34px;height:34px}
+.fb{flex:1;padding:10px;border:0;border-radius:8px;background:var(--sel);color:var(--fg);font-size:15px}
 </style></head><body>
 <div id="app">
  <div class="bar">
   <button id="bMenu">☰</button><button id="bOpen">📂</button>
-  <button id="bUndo">↶</button><button id="bRedo">↷</button>
+  <button id="bUndo">↶</button><button id="bRedo">↷</button><button id="bMode" class="pill"></button>
   <span style="flex:1"></span>
   <button class="run" id="bRun">▶</button>
  </div>
@@ -74,11 +88,13 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 <div id="scrim"></div>
 <div id="drawer">
  <div class="dh"><svg width="40" height="40" viewBox="0 0 108 108"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1020"/><stop offset="1" stop-color="#312E81"/></linearGradient><radialGradient id="lg" cx="86" cy="20" r="72" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#7C83FF" stop-opacity=".5"/><stop offset="1" stop-color="#7C83FF" stop-opacity="0"/></radialGradient><linearGradient id="lf" gradientUnits="userSpaceOnUse" x1="34" y1="26" x2="76" y2="84"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#C7D2FE"/></linearGradient></defs><rect width="108" height="108" rx="26" fill="url(#lb)"/><rect width="108" height="108" rx="26" fill="url(#lg)"/><g transform="translate(54 54) scale(.92) translate(-54 -54) translate(-2.5 0)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path transform="translate(0 1.8)" stroke="#000" stroke-opacity=".3" stroke-width="9.5" d="M40,80V30H55A14.5,14.5 0 0 1 55,59H40"/><path stroke="url(#lf)" stroke-width="9.5" d="M40,80V30H55A14.5,14.5 0 0 1 55,59H40"/><path fill="#22D3EE" stroke="none" d="M50.38,38.81Q49.00,38.00 49.00,39.60L49.00,49.40Q49.00,51.00 50.38,50.19L58.62,45.31Q60.00,44.50 58.62,43.69Z"/><path d="M57,79.5H75" stroke="#22D3EE" stroke-opacity=".25" stroke-width="11"/><path d="M57,79.5H75" stroke="#22D3EE" stroke-width="6.5"/></g></svg>Pyvora</div>
+ <div class="seg" id="seg"><button data-m="py">🐍 Python</button><button data-m="html">🌐 HTML</button></div>
  <button data-a="new">＋ <span data-i="new"></span></button>
  <button data-a="save">💾 <span data-i="save"></span></button>
  <button data-a="term">⌨ <span data-i="term"></span></button>
  <button data-a="pip">📦 <span data-i="pip"></span></button>
- <button data-a="perm">📁 <span data-i="perm"></span></button>
+ <button data-a="files">📁 <span data-i="files"></span></button>
+ <button data-a="perm">🔑 <span data-i="perm"></span></button>
  <button data-a="set">⚙ <span data-i="set"></span></button>
 </div>
 <div id="modal"><div class="box">
@@ -87,17 +103,18 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
  <label><span id="sTheme"></span><select id="oTheme"></select></label>
  <label><span id="sSyn"></span><select id="oSyn"></select></label>
  <div id="cust"></div>
- <label><span id="sDir"></span><select id="oDir"><option value="root"></option><option value="app"></option></select></label>
+ <label id="lDir"><span id="sDir"></span><select id="oDir"><option value="root"></option><option value="app"></option></select></label>
  <label><span id="sSize"></span><input type="number" id="oSize" min="10" max="30" style="width:70px"></label>
  <label><span id="sAuto"></span><input type="checkbox" id="oAuto"></label>
  <button id="sOk" style="width:100%;margin-top:8px;padding:10px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-size:16px"></button>
 </div></div>
 <div id="dlg2"><div class="box"><h3 id="dT" style="margin:0 0 8px"></h3><div id="dM"></div><div id="dB"></div></div></div>
+<div id="fm"><div class="box"><h3 id="fmT" style="margin:0 0 6px"></h3><p id="fmN" style="margin:0 0 8px;font-size:12px;opacity:.7"></p><div id="fmL"></div><div style="display:flex;gap:8px;margin-top:10px"><button id="fmI" class="fb"></button><button id="fmX" class="fb"></button></div></div></div>
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-const I18N={en:{new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",permT:"File access",permM:"To save your files (json, txt…) on the phone, Pyvora needs file access. A settings screen will open: turn the switch on, then come back.",allow:"Allow",later:"Later",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"Pyvora folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
-ar:{new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",permT:"السماح بالوصول للملفات",permM:"عشان البرنامج يحفظ ملفاتك (json وغيره) في ذاكرة التليفون محتاج صلاحية الملفات. هتفتح لك شاشة إعدادات: فعّل الزرار وارجع للتطبيق.",allow:"سماح",later:"لاحقًا",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر Pyvora",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
+const I18N={en:{files:"Files",imp:"Import",emptyF:"No files yet",delF:"Delete “%”?",notText:"This file can’t be opened as text",modeP:"Python mode",modeH:"HTML mode",tHtml:"HTML page",tCss:"CSS style",tJs:"JavaScript",nohtml:"Add an HTML file first",rename:"Rename file",exists:"This name is already used",badname:"Invalid file name",fmNote:"Your files live inside the app. ⬆ saves a copy to Downloads / Drive, Import adds files from the phone.",runHtml:"Preview",new:"New file",save:"Save",term:"Terminal",pip:"Pip (libraries)",set:"Settings",lang:"Language",theme:"Editor colors",size:"Font size",auto:"Auto-close brackets",ok:"Done",untitled:"untitled",nopy:"Runs only inside the Android app",permT:"File access",permM:"To save your files (json, txt…) on the phone, Pyvora needs file access. A settings screen will open: turn the switch on, then come back.",allow:"Allow",later:"Later",ui:"Editor colors",syn:"Code colors",custom:"Custom…",dir:"Save files in",dRoot:"Phone storage (no folder)",dApp:"Pyvora folder",perm:"Files permission",closeT:"Close file",closeM:"“%” has code. What do you want to do?",del:"Delete",sv:"Save",cancel:"Cancel",saved:"Saved: ",noperm:"No files permission — choose where to save"},
+ar:{files:"الملفات",imp:"استيراد",emptyF:"مفيش ملفات لسه",delF:"تمسح “%” ؟",notText:"الملف ده مش نصي ومينفعش يتفتح هنا",modeP:"وضع بايثون",modeH:"وضع HTML",tHtml:"صفحة HTML",tCss:"ملف تنسيق CSS",tJs:"ملف JavaScript",nohtml:"ضيف ملف HTML الأول",rename:"تغيير اسم الملف",exists:"الاسم ده مستخدم",badname:"اسم الملف غير صالح",fmNote:"ملفاتك محفوظة جوه التطبيق. زرار ⬆ بيحفظ نسخة في التحميلات أو Drive، واستيراد بيضيف ملفات من التليفون.",runHtml:"معاينة",new:"ملف جديد",save:"حفظ",term:"Terminal",pip:"Pip (المكتبات)",set:"الإعدادات",lang:"اللغة",theme:"ألوان المحرر",size:"حجم الخط",auto:"إغلاق الأقواس تلقائيا",ok:"تم",untitled:"جديد",nopy:"التشغيل شغال جوه تطبيق أندرويد بس",permT:"السماح بالوصول للملفات",permM:"عشان البرنامج يحفظ ملفاتك (json وغيره) في ذاكرة التليفون محتاج صلاحية الملفات. هتفتح لك شاشة إعدادات: فعّل الزرار وارجع للتطبيق.",allow:"سماح",later:"لاحقًا",ui:"ألوان المحرر",syn:"ألوان الكود",custom:"مخصص…",dir:"مكان حفظ الملفات",dRoot:"ذاكرة التليفون (بدون فولدر)",dApp:"فولدر Pyvora",perm:"صلاحية الملفات",closeT:"إغلاق الملف",closeM:"الملف “%” فيه كود. تحب تعمل إيه؟",del:"مسح",sv:"حفظ",cancel:"إلغاء",saved:"اتحفظ: ",noperm:"مفيش صلاحية للملفات — اختار مكان الحفظ"}};
 /* editor themes: ebg bar fg mut sel ac */
 const EDT={
 "Dark+":"#1e1e1e #252526 #d4d4d4 #858585 #264f78 #0e639c",
@@ -162,23 +179,33 @@ const SYN={
 "Matrix":"#7dff7d #00ff41 #39ff14 #b6ff9c #00ffa2 #2e7d32 #66ff66 #adff2f #66ff66 #00ffa2 #39ff14 #00ff41"};
 const SK=["fg","kw","bi","st","nu","cm","fn","cl","dc","cn","sf","op"];
 const SKN={ar:["النص العادي","كلمات (if, for..)","دوال جاهزة (print..)","النصوص \"\"","الأرقام","التعليقات #","أسماء الدوال","الكلاسات","ديكوريتور @","True/None","self","الرموز + - ="],en:["Plain text","Keywords","Built-ins","Strings","Numbers","Comments","Functions","Classes","Decorators","True/None","self","Operators"]};
-let S={tabs:[],cur:0,lang:"ar",ui:"",syn:"",custom:null,dir:"root",size:15,auto:true};
+let S={ws:null,mode:"py",lang:"ar",ui:"",syn:"",custom:null,dir:"root",size:15,auto:true};
 try{Object.assign(S,JSON.parse(localStorage.getItem("pyed")||"{}"))}catch(e){}
 if(!S.ui)S.ui=S.theme||"Dark+";if(!S.syn)S.syn=S.theme||"Dark+";delete S.theme;
 if(!EDT[S.ui])S.ui="Dark+";if(S.syn!=="Custom"&&!SYN[S.syn])S.syn="Dark+";
 if(!S.custom)S.custom=Object.fromEntries(SK.map((k,i)=>[k,SYN["Dark+"].split(" ")[i]]));
-S.tabs.forEach(t=>{if(t.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")t.code="";if(t.path==null)t.path=""});
+/* two workspaces: Python files and web files (HTML / CSS / JS). Old saves had one list: it becomes the Python one */
+if(!S.ws)S.ws={py:{tabs:Array.isArray(S.tabs)?S.tabs:[],cur:+S.cur||0},html:{tabs:[],cur:0}};
+delete S.tabs;delete S.cur;
+if(S.mode!=="html")S.mode="py";
+for(const m of["py","html"]){const w=S.ws[m]=S.ws[m]||{tabs:[],cur:0};
+ w.tabs=(Array.isArray(w.tabs)?w.tabs:[]).filter(x=>x&&typeof x.name==="string");
+ w.tabs.forEach(x=>{if(typeof x.code!=="string")x.code="";if(x.path==null)x.path="";if(m==="py"&&x.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")x.code=""});
+ if(!(w.cur>=0&&w.cur<w.tabs.length))w.cur=0}
+const W=()=>S.ws[S.mode],CT=()=>W().tabs[W().cur];
 const t=k=>I18N[S.lang][k];
-const saveNow=()=>{try{if(typeof ed!=="undefined"&&S.tabs[S.cur])S.tabs[S.cur].code=ed.value;localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
+const saveNow=()=>{try{if(typeof ed!=="undefined"&&CT())CT().code=ed.value;localStorage.setItem("pyed",JSON.stringify(S))}catch(e){}};
 let saveT=0;const save=()=>{clearTimeout(saveT);saveT=setTimeout(saveNow,400)};
 addEventListener("pagehide",saveNow);document.addEventListener("visibilitychange",()=>{if(document.hidden)saveNow()});
-function freeName(){let i=1;const used=new Set(S.tabs.map(x=>x.name));while(used.has(t("untitled")+i+".py"))i++;return t("untitled")+i+".py"}
+function freeName(){let i=1;const used=new Set(W().tabs.map(x=>x.name));while(used.has(t("untitled")+i+".py"))i++;return t("untitled")+i+".py"}
 const newTab=(name,code)=>({name:name||freeName(),code:code||"",path:""});
-if(!S.tabs.length)S.tabs.push(newTab("main.py"));
+const HTML_TPL=["<!DOCTYPE html>",'<html lang="en">',"<head>",'  <meta charset="UTF-8">','  <meta name="viewport" content="width=device-width, initial-scale=1.0">',"  <title>Pyvora</title>","  <style>","    body { font-family: sans-serif; text-align: center; padding: 2rem; }","  </style>","</head>","<body>","  <h1>Hello, World!</h1>","  <script>",'    console.log("Hello from Pyvora");',"  <\/script>","</body>","</html>",""].join("\n");
+if(!S.ws.py.tabs.length)S.ws.py.tabs.push(newTab("main.py"));
+if(!S.ws.html.tabs.length)S.ws.html.tabs.push({name:"index.html",code:HTML_TPL,path:""});
 function applyTheme(){const r=document.documentElement.style,e=EDT[S.ui].split(" "),
  ev={bg:e[0],ebg:e[0],bar:e[1],fg:e[2],mut:e[3],emut:e[3],sel:e[4],esel:e[4],ac:e[5]};for(const k in ev)r.setProperty("--"+k,ev[k]);
  const p=S.syn==="Custom"?S.custom:Object.fromEntries(SK.map((k,i)=>[k,SYN[S.syn].split(" ")[i]]));
- SK.forEach(k=>r.setProperty("--"+(k==="fg"?"efg":k),p[k]))}
+ SK.forEach(k=>r.setProperty("--"+(k==="fg"?"efg":k),p[k]));pushBars(e[1])}
 
 /* ---------- Python highlighter ---------- */
 const KW=new Set("False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield match case".split(" "));
@@ -203,8 +230,131 @@ function hlLines(src){
  }
  return L;
 }
+/* ---------- web highlighters (HTML / CSS / JS) ---------- */
+const mkL=()=>{const L=[""];return{L,add(c,x){const ps=x.split("\n");for(let i=0;i<ps.length;i++){if(i)L.push("");const p=ps[i];if(p)L[L.length-1]+=c?`<span class="${c}">${esc(p)}</span>`:esc(p)}}}};
+const hlTxt=src=>{const b=mkL();b.add("",src);return b.L};
+
+const JKW=new Set("break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch throw try typeof var void while with yield async await static of".split(" "));
+const JCN=new Set(["true","false","null","undefined","NaN","Infinity"]);
+const JBI=new Set("console document window Math JSON Array Object String Number Boolean Date Promise Map Set WeakMap WeakSet Symbol RegExp Error TypeError RangeError parseInt parseFloat isNaN isFinite fetch setTimeout setInterval clearTimeout clearInterval requestAnimationFrame cancelAnimationFrame localStorage sessionStorage navigator location history alert confirm prompt performance globalThis Intl URL FormData Event Element Node Image Audio Blob File FileReader XMLHttpRequest WebSocket Proxy Reflect BigInt".split(" "));
+const JRXP=/(\/\/[^\n]*)|(\/\*[\s\S]*?(?:\*\/|$))|(`(?:\\[\s\S]|[^`\\])*(?:`|$))|("(?:\\.|[^"\\\n])*"?)|('(?:\\.|[^'\\\n])*'?)|(0[xXoObB][\da-fA-F_]+n?|\d[\d_]*\.?\d*(?:[eE][+-]?\d+)?n?|\.\d+)|([A-Za-z_$\u0080-\uFFFF][\w$\u0080-\uFFFF]*)|([\s\S])/g;
+const JREG=/\/(?![*\/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^\/\\\n\[])+\/[a-z]*/y;
+const JRE_PREV=new Set(["","(",",","=",":","[","!","&","|","?","{","}",";","+","-","*","%","<",">","~","^"]);
+const JRE_KW=new Set(["return","typeof","instanceof","in","of","new","delete","void","throw","case","do","else","yield","await"]);
+function jsInto(b,src){
+ const R=new RegExp(JRXP.source,"g");let m,prev="";
+ while((m=R.exec(src))){
+  const x=m[0];let c="";
+  if(m[1]||m[2]){b.add("cm_",x);continue}
+  if(m[3]||m[4]||m[5]){b.add("st",x);prev="s";continue}
+  if(m[6]){b.add("nu",x);prev="n";continue}
+  if(m[7]){
+   if(prev==="function")c="fn";else if(prev==="class")c="cl";
+   else if(JKW.has(x))c="kw";else if(JCN.has(x))c="cn";else if(x==="this")c="sf";
+   else if(JBI.has(x))c="bi";
+   else if(src[R.lastIndex]==="(")c="fn";
+   else if(/^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$/.test(x))c="cl";
+   prev=x;b.add(c,x);continue}
+  if(x==="/"&&(JRE_PREV.has(prev)||JRE_KW.has(prev))){
+   JREG.lastIndex=m.index;const r=JREG.exec(src);
+   if(r){b.add("st",r[0]);R.lastIndex=m.index+r[0].length;prev="s";continue}}
+  if(/[+\-*\/%=<>!&|^~?:]/.test(x))c="op";
+  b.add(c,x);if(!/\s/.test(x))prev=x;
+ }
+}
+function hlJs(src){const b=mkL();jsInto(b,src);return b.L}
+
+const CSS_NEST=/^@(media|supports|layer|container|document|keyframes|-webkit-keyframes|-moz-keyframes|scope|starting-style)$/;
+function cssInto(b,src){
+ const R=/(\/\*[\s\S]*?(?:\*\/|$))|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?)|(@[\w-]+)|(!\s*important)|(#[\w-]+)|(-?(?:\d+\.?\d*|\.\d+)(?:%|[A-Za-z]+)?)|(--?[A-Za-z_][\w-]*|[A-Za-z_][\w-]*)|(\.[A-Za-z_-][\w-]*)|(::?)|([\s\S])/g;
+ const stack=[];let ctx="r",val=false,at="",pseudo=false,m;
+ while((m=R.exec(src))){
+  const x=m[0];
+  if(m[1]){b.add("cm_",x);continue}
+  if(m[2]){b.add("st",x);continue}
+  if(m[3]){at=x.toLowerCase();b.add("kw",x);continue}
+  if(m[4]){b.add("kw",x);continue}
+  if(m[10]){
+   if(x==="{"){const nest=ctx==="r"&&CSS_NEST.test(at);stack.push(ctx);ctx=nest?"r":"d";val=false;at="";pseudo=false;b.add("op",x);continue}
+   if(x==="}"){ctx=stack.pop()||"r";val=false;at="";pseudo=false;b.add("op",x);continue}
+   if(x===";"){val=false;at="";pseudo=false;b.add("op",x);continue}
+   if(ctx==="r"&&/[>+~*]/.test(x)){b.add("op",x);continue}
+   b.add("",x);continue}
+  if(m[9]){
+   if(ctx==="d"&&!val&&x===":"){val=true;b.add("op",x);continue}
+   if(ctx==="r"&&!at){pseudo=true;b.add("op",x);continue}
+   b.add("",x);continue}
+  if(ctx==="d"){
+   if(m[5]){b.add(val?"nu":"",x);continue}
+   if(m[6]){b.add("nu",x);continue}
+   if(m[7]){
+    if(!val)b.add("sf",x);
+    else if(src[R.lastIndex]==="(")b.add("fn",x);
+    else if(x.startsWith("--"))b.add("sf",x);
+    else b.add("",x);
+    continue}
+   b.add("",x);continue}
+  /* ctx "r": selectors and at-rule preludes */
+  if(m[5]){b.add(at?"nu":"fn",x);continue}
+  if(m[6]){b.add("nu",x);continue}
+  if(m[7]){
+   if(at){b.add(/^(and|or|not|only)$/i.test(x)?"kw":"",x)}
+   else if(pseudo){b.add("bi",x);pseudo=false}
+   else b.add("cn",x);
+   continue}
+  if(m[8]){b.add(at?"":"cl",x);continue}
+  b.add("",x)
+ }
+}
+function hlCss(src){const b=mkL();cssInto(b,src);return b.L}
+
+const VOID=new Set("area base br col embed hr img input link meta param source track wbr".split(" "));
+function htmlText(b,s){
+ const R=/&(?:#\d+|#x[\da-fA-F]+|[A-Za-z]\w*);/g;let i=0,m;
+ while((m=R.exec(s))){if(m.index>i)b.add("",s.slice(i,m.index));b.add("nu",m[0]);i=m.index+m[0].length}
+ if(i<s.length)b.add("",s.slice(i))}
+function hlHtml(src){
+ const b=mkL(),n=src.length,TAG=/<(\/?)([A-Za-z][\w:.-]*)/y,AT=/(\s+)|(\/?>)|([^\s"'<>\/=]+)|(=)|("[^"]*"?|'[^']*'?)|([\s\S])/y;
+ let i=0;
+ while(i<n){
+  if(src[i]!=="<"){let j=src.indexOf("<",i);if(j<0)j=n;htmlText(b,src.slice(i,j));i=j;continue}
+  if(src.startsWith("<!\u002d\u002d",i)){let j=src.indexOf("\u002d\u002d>",i+4);j=j<0?n:j+3;b.add("cm_",src.slice(i,j));i=j;continue}
+  if(src[i+1]==="!"||src[i+1]==="?"){let j=src.indexOf(">",i);j=j<0?n:j+1;b.add("dc",src.slice(i,j));i=j;continue}
+  TAG.lastIndex=i;const mt=TAG.exec(src);
+  if(!mt){b.add("",src[i]);i++;continue}
+  b.add("op","<"+mt[1]);b.add("cn",mt[2]);i+=mt[0].length;
+  const name=mt[2].toLowerCase(),closing=!!mt[1];
+  let afterEq=false,lastAttr="",typeVal="",ended="";
+  while(i<n){
+   AT.lastIndex=i;const a=AT.exec(src);const x=a[0];i+=x.length;
+   if(a[1]){b.add("",x);continue}
+   if(a[2]){b.add("op",x);ended=x;break}
+   if(a[3]){if(afterEq){b.add("st",x);afterEq=false}else{b.add("sf",x);lastAttr=x.toLowerCase()}continue}
+   if(a[4]){b.add("op",x);afterEq=true;continue}
+   if(a[5]){b.add("st",x);if(lastAttr==="type")typeVal=x.toLowerCase();afterEq=false;continue}
+   if(x==="<"){i--;break}
+   b.add("",x)}
+  if(ended===">"&&!closing&&(name==="script"||name==="style")){
+   const rest=src.slice(i),k=rest.search(new RegExp("</"+name+"[\\s>/]","i")),body=k<0?rest:rest.slice(0,k);
+   if(name==="style")cssInto(b,body);
+   else if(/template|html|text\/x-/.test(typeVal))b.add("",body);
+   else jsInto(b,body);
+   i+=body.length}
+ }
+ return b.L}
+
+const langOf0=n=>{const m=/\.([^.\/\\]+)$/.exec(n||"");return m?m[1].toLowerCase():""};
+const EXT=langOf0;
+function langOf(n){const e=EXT(n);
+ if(e==="html"||e==="htm"||e==="xhtml"||e==="svg"||e==="xml")return"html";
+ if(e==="css")return"css";
+ if(e==="js"||e==="mjs"||e==="cjs"||e==="ts"||e==="json")return"js";
+ if(e==="txt"||e==="md"||e==="csv"||e==="log")return"txt";
+ return S.mode==="html"?"txt":"py"}
+const curLang=()=>CT()?langOf(CT().name):"py";
+function hlFor(src){const l=curLang();return l==="html"?hlHtml(src):l==="css"?hlCss(src):l==="js"?hlJs(src):l==="txt"?hlTxt(src):hlLines(src)}
 const wrapLine=l=>`<div class="l">${l||"\u200b"}</div>`;
-function highlight(src){return hlLines(src).map(wrapLine).join("")}
+function highlight(src){return hlFor(src).map(wrapLine).join("")}
 
 /* ---------- editor ---------- */
 const ed=$("ed"),hl=$("hl"),cell=$("cell");
@@ -217,7 +367,7 @@ function paintVm(force){const L=curL,N=L.length,vis=Math.ceil(wrapEl.clientHeigh
  if(!force&&first-10>=wa&&first+vis+10<=wb)return;
  const a=Math.max(0,first-40),b=Math.min(N,first+vis+40);
  hl.style.paddingTop=(8+a*LH)+"px";hl.style.paddingBottom=(120+(N-b)*LH)+"px";hl.style.counterReset="ln "+a;
- hl.innerHTML=hlLines(L.slice(a,b).join("\n")).map(wrapLine).join("");wa=a;wb=b}
+ hl.innerHTML=hlFor(L.slice(a,b).join("\n")).map(wrapLine).join("");wa=a;wb=b}
 function render(){
  const v=ed.value;let n=1,i=-1,ls=0,mx=0;
  while((i=v.indexOf("\n",ls))>=0){if(i-ls>mx)mx=i-ls;n++;ls=i+1}if(v.length-ls>mx)mx=v.length-ls;
@@ -225,7 +375,7 @@ function render(){
  if(v.length>VL||n>VN){setVm(true);const g=parseFloat(getComputedStyle(ed).lineHeight);LH=g>0?g:S.size*1.55;
   curL=v.split("\n");cell.style.setProperty("--mx",mx);paintVm(true)}
  else{setVm(false);hl.innerHTML=highlight(v)}
- S.tabs[S.cur].code=v;save();
+ CT().code=v;save();
 }
 wrapEl.addEventListener("scroll",()=>{if(vm&&!rhT)rhT=requestAnimationFrame(()=>{rhT=0;paintVm(false)})},{passive:true});
 /* fast scroll bar: shows while scrolling, hides after 3 seconds */
@@ -241,7 +391,7 @@ const fend=()=>{fdrag=null;fth.classList.remove("drag");fsShow()};fth.addEventLi
 /* Keyboards paste long text as many fast events (one per line): render at most a few times a second */
 let lastR=0,rT=0,rCost=30;
 function doRender(){const t0=performance.now();render();lastR=performance.now();rCost=lastR-t0}
-function renderSoon(){S.tabs[S.cur].code=ed.value;clearTimeout(hT);hT=setTimeout(hsnap,500);if(rT)return;const wait=lastR+Math.max(70,rCost*2.5)-performance.now();
+function renderSoon(){CT().code=ed.value;clearTimeout(hT);hT=setTimeout(hsnap,500);if(rT)return;const wait=lastR+Math.max(70,rCost*2.5)-performance.now();
  if(wait<=0)doRender();else rT=setTimeout(()=>{rT=0;doRender()},wait)}
 ed.addEventListener("input",renderSoon);
 let lastBI=0;
@@ -262,13 +412,10 @@ ed.addEventListener("beforeinput",e=>{
  if(e.inputType==="insertFromPaste"){const d=e.dataTransfer?e.dataTransfer.getData("text/plain"):"";if(bigTxt(d)){e.preventDefault();fastInsert(d.replace(/\r\n?/g,"\n"));return}}
  if(e.inputType==="insertText"&&bigTxt(e.data)){e.preventDefault();fastInsert(e.data.replace(/\r\n?/g,"\n"));return}
  if(e.isComposing)return;
+ if(e.inputType==="insertText"&&e.data&&e.data.length===1&&curLang()!=="py"&&webKey(e))return;
  if(e.inputType==="insertLineBreak"||e.inputType==="insertParagraph"){
   if(fast)return; /* part of a paste: keep the text exactly as it is (no auto indent) */
-  e.preventDefault();
-  const p=ed.selectionStart,b=ed.value.slice(0,p),line=b.slice(b.lastIndexOf("\n")+1);
-  let ind=line.match(/^[ \t]*/)[0];
-  if(/:\s*$/.test(line))ind+="    ";
-  ins("\n"+ind);return;
+  e.preventDefault();enterKey();return;
  }
  if(e.inputType==="insertText"&&S.auto&&e.data&&e.data.length===1){
   const pairs={"(":")","[":"]","{":"}",'"':'"',"'":"'"},c=e.data,nx=ed.value[ed.selectionStart];
@@ -280,69 +427,207 @@ ed.addEventListener("beforeinput",e=>{
   }
  }
 });
-ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();e.shiftKey?dedent():ins("    ")}});
-function dedent(){const p=ed.selectionStart,s=ed.value.lastIndexOf("\n",p-1)+1,m=ed.value.slice(s).match(/^( {1,4}|\t)/);if(m){ed.setSelectionRange(s,s+m[0].length);ins("")}}
-function load(){ed.value=S.tabs[S.cur].code;render();drawTabs();hreset();wrapEl.scrollTop=0}
+ed.addEventListener("keydown",e=>{if(e.key==="Tab"){e.preventDefault();e.shiftKey?dedent():ins(IND())}});
+const IND=()=>curLang()==="py"?"    ":"  ";
+function dedent(){const U=IND().length,p=ed.selectionStart,s=ed.value.lastIndexOf("\n",p-1)+1,m=ed.value.slice(s).match(U===4?/^( {1,4}|\t)/:/^( {1,2}|\t)/);if(m){ed.setSelectionRange(s,s+m[0].length);ins("");const q=Math.max(s,p-m[0].length);ed.setSelectionRange(q,q)}}
+const PAIR={"{":"}","[":"]","(":")"};
+/* Enter: keeps the indent; Python indents after ":", web files after { [ ( and after an open tag; between {} or <p></p> it opens a blank middle line */
+function enterKey(){
+ const p=ed.selectionStart,v=ed.value,b=v.slice(0,p),a=v.slice(p),line=b.slice(b.lastIndexOf("\n")+1),L=curLang();
+ let ind=line.match(/^[ \t]*/)[0];
+ if(L==="py"){if(/:\s*$/.test(line))ind+="    ";ins("\n"+ind);return}
+ const U="  ",pc=b.slice(-1),nc=a.slice(0,1);let open=false,between=false;
+ if(PAIR[pc]){open=true;between=PAIR[pc]===nc}
+ else if(L==="html"){const m=/<([A-Za-z][\w:.-]*)(?:\s[^<>]*)?>$/.exec(b);
+  if(m&&!VOID.has(m[1].toLowerCase())&&!/\/>$/.test(b)){open=true;between=a.toLowerCase().startsWith("</"+m[1].toLowerCase())}}
+ if(open&&between){ins("\n"+ind+U+"\n"+ind);const q=ed.selectionStart-1-ind.length;ed.setSelectionRange(q,q);return}
+ if(open)ind+=U;
+ else if(/[{\[(]\s*$/.test(line)&&(a===""||a[0]==="\n"))ind+=U;
+ ins("\n"+ind)}
+/* true when the caret is inside a script or a style element */
+function inRaw(b){const lo=b.toLowerCase();for(const tg of["script","style"]){const o=lo.lastIndexOf("<"+tg),c=lo.lastIndexOf("</"+tg);if(o>=0&&o>c&&lo.indexOf(">",o)>=0)return true}return false}
+/* typed characters in web files: auto-close tags (<div> -> <div></div>), and a closing bracket on an empty indented line steps back one level */
+function webKey(e){
+ if(ed.selectionStart!==ed.selectionEnd)return false;
+ const c=e.data,L=curLang(),p=ed.selectionStart,v=ed.value,b=v.slice(0,p);
+ if(S.auto&&L==="html"&&c===">"){
+  const lt=b.lastIndexOf("<");
+  if(lt>=0&&lt>b.lastIndexOf(">")){
+   const m=/^<([A-Za-z][\w:.-]*)(?:\s[^<>]*)?$/.exec(b.slice(lt));
+   if(m&&!VOID.has(m[1].toLowerCase())&&!/\/$/.test(b)&&!inRaw(b)){e.preventDefault();ins("></"+m[1]+">");ed.setSelectionRange(p+1,p+1);return true}}}
+ if(c==="}"||c==="]"||c===")"){
+  const pre=b.slice(b.lastIndexOf("\n")+1);
+  if(pre.length>=2&&/^ +$/.test(pre)&&v[p]!==c){e.preventDefault();ed.setSelectionRange(p-2,p);ins(c);return true}}
+ return false}
+function load(){ed.value=CT().code;render();drawTabs();hreset();wrapEl.scrollTop=0;drawKeys()}
 function drawTabs(){
  const el=$("tabs");el.innerHTML="";
- S.tabs.forEach((tb,i)=>{const d=document.createElement("div");d.className="tab"+(i===S.cur?" on":"");
+ W().tabs.forEach((tb,i)=>{const d=document.createElement("div");d.className="tab"+(i===W().cur?" on":"");
   d.innerHTML=`<span>${esc(tb.name)}</span><b>✕</b>`;
-  d.onclick=ev=>{if(ev.target.tagName==="B")closeTab(i);else{S.cur=i;load()}};
+  let lp=0,fired=false;const stop=()=>clearTimeout(lp);
+  /* long press = rename (the file name matters for <link href="style.css"> and <script src="app.js">) */
+  d.addEventListener("pointerdown",ev=>{if(ev.target.tagName==="B")return;fired=false;stop();lp=setTimeout(()=>{fired=true;renameTab(i)},600)});
+  d.addEventListener("pointerup",stop);d.addEventListener("pointercancel",stop);d.addEventListener("pointerleave",stop);
+  d.onclick=ev=>{if(fired){fired=false;return}if(ev.target.tagName==="B")closeTab(i);else{W().cur=i;load()}};
   el.appendChild(d)});
- const a=document.createElement("div");a.className="tab add";a.textContent="＋";a.onclick=addTab;el.appendChild(a);
+ const a=document.createElement("div");a.className="tab add";a.textContent="＋";a.onclick=()=>addTab();el.appendChild(a);
  const on=el.querySelector(".tab.on");if(on)on.scrollIntoView({inline:"nearest",block:"nearest"});
 }
-function addTab(){S.tabs.push(newTab());S.cur=S.tabs.length-1;load();save();ed.focus()}
+function freeWebName(kind){const base={html:"index",css:"style",js:"script"}[kind],ext={html:".html",css:".css",js:".js"}[kind];
+ const used=new Set(W().tabs.map(x=>x.name));let n=base+ext,i=2;while(used.has(n))n=base+(i++)+ext;return n}
+async function addTab(){
+ if(S.mode==="html"){
+  const r=await ask(t("new"),"",[[t("tHtml"),"html"],[t("tCss"),"css"],[t("tJs"),"js"],[t("cancel"),"x"]]);
+  if(r==="x")return;
+  W().tabs.push({name:freeWebName(r),code:r==="html"?HTML_TPL:"",path:""})
+ }else W().tabs.push(newTab());
+ W().cur=W().tabs.length-1;load();save();ed.focus()}
+async function renameTab(i){const tb=W().tabs[i];if(!tb)return;
+ const v=await askText(t("rename"),tb.name);if(!v||v===tb.name)return;
+ const n=v.replace(/\\/g,"/").replace(/^\/+/,"");
+ if(!n||n.endsWith("/")||/(^|\/)\.\.(\/|$)|[:*?"<>|]/.test(n)){toast(t("badname"));return}
+ if(W().tabs.some((x,j)=>j!==i&&x.name===n)){toast(t("exists"));return}
+ tb.name=n;tb.path="";load();save()}
+/* dialogs. Back (or a tap outside) answers with the LAST button, which is always "cancel" */
+let dlgCancel=null;
+function dlgClose(){$("dlg2").classList.remove("show");$("dM").innerHTML="";dlgCancel=null}
 function ask(title,msg,btns){return new Promise(res=>{$("dT").textContent=title;$("dM").textContent=msg;const b=$("dB");b.innerHTML="";
- btns.forEach(([l,v,c])=>{const x=document.createElement("button");x.textContent=l;if(c)x.className=c;x.onclick=()=>{$("dlg2").classList.remove("show");res(v)};b.appendChild(x)});
+ btns.forEach(([l,v,c])=>{const x=document.createElement("button");x.textContent=l;if(c)x.className=c;x.onclick=()=>{dlgClose();res(v)};b.appendChild(x)});
+ dlgCancel=()=>{dlgClose();res(btns[btns.length-1][1])};
  $("dlg2").classList.add("show")})}
+function askText(title,val){return new Promise(res=>{$("dT").textContent=title;const m=$("dM");m.innerHTML="";
+ const i=document.createElement("input");i.value=val;i.autocapitalize="off";i.spellcheck=false;i.autocomplete="off";m.appendChild(i);
+ const b=$("dB");b.innerHTML="";
+ const ok=document.createElement("button");ok.className="pri";ok.textContent=t("ok");ok.onclick=()=>{const v=i.value.trim();dlgClose();res(v)};
+ const c=document.createElement("button");c.textContent=t("cancel");c.onclick=()=>{dlgClose();res(null)};
+ b.append(ok,c);i.onkeydown=e=>{if(e.key==="Enter")ok.click()};
+ dlgCancel=()=>{dlgClose();res(null)};
+ $("dlg2").classList.add("show");setTimeout(()=>{i.focus();i.select()},60)})}
 /* saves the tab on the phone; returns true when finished (false = waiting for the system save dialog) */
 function saveTab(tb){const a=A();if(!a){toast(t("nopy"));return false}
  let r="";try{r=a.quickSave(tb.name,tb.code,tb.path||"")}catch(e){}
  if(r){tb.path=r;save();toast(t("saved")+r);return true}
  toast(t("noperm"));a.saveAs(tb.name,tb.code);return true}
-async function closeTab(i){if(i===S.cur)S.tabs[i].code=ed.value;const tb=S.tabs[i];
+async function closeTab(i){if(i===W().cur)W().tabs[i].code=ed.value;const tb=W().tabs[i];
  if(tb.code.trim()){const r=await ask(t("closeT"),t("closeM").replace("%",tb.name),[[t("del"),"del","danger"],[t("sv"),"save","pri"],[t("cancel"),"cancel"]]);
   if(r!=="del"&&r!=="save")return;
   if(r==="save"&&!saveTab(tb))return}
- S.tabs.splice(i,1);if(!S.tabs.length)S.tabs.push(newTab());
- if(i<S.cur)S.cur--;S.cur=Math.max(0,Math.min(S.cur,S.tabs.length-1));load();save()}
+ W().tabs.splice(i,1);if(!W().tabs.length)W().tabs.push(newTab());
+ if(i<W().cur)W().cur--;W().cur=Math.max(0,Math.min(W().cur,W().tabs.length-1));load();save()}
 
 /* ---------- keys bar ---------- */
 const SYM=["Tab","(",")","[","]","{","}",'"',"'",":","=","#","_",".",",","+","-","*","/","%","<",">","!","&","|","\\","@","$"];
 const KWS=["if","elif","else","for","while","return","import","from","def","print","input","class","try","except","in","and","or","not","True","False","None","range","len","int","str","with","as","pass","break","continue","self"];
 const FN=new Set(["print","input","range","len","int","str"]),COL=new Set(["else","try"]);
+const SYMW=["Tab","<",">","/","=",'"',"'","(",")","{","}","[","]",";",":","#",".",",","!","&","-","_","+","*","?","$","@","%","|","\\"];
+/* snippets: § marks where the caret goes. "<\/script>" is written with a backslash so it does not end this page's own script */
+const SNIP={
+ html:[["html5","<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>§</title>\n</head>\n<body>\n  \n</body>\n</html>"],
+  ["div","<div>§</div>"],["span","<span>§</span>"],["p","<p>§</p>"],["h1","<h1>§</h1>"],["h2","<h2>§</h2>"],["a","<a href=\"§\"></a>"],["img","<img src=\"§\" alt=\"\">"],["button","<button>§</button>"],["input","<input type=\"text\" placeholder=\"§\">"],
+  ["ul","<ul>\n  <li>§</li>\n</ul>"],["li","<li>§</li>"],["form","<form>\n  §\n</form>"],["label","<label>§</label>"],["table","<table>\n  <tr>\n    <td>§</td>\n  </tr>\n</table>"],["section","<section>§</section>"],["header","<header>§</header>"],["footer","<footer>§</footer>"],["nav","<nav>§</nav>"],
+  ["br","<br>§"],["hr","<hr>§"],["link","<link rel=\"stylesheet\" href=\"§\">"],["script","<script>\n  §\n<\/script>"],["script src","<script src=\"§\"><\/script>"],["style","<style>\n  §\n</style>"],["canvas","<canvas id=\"§\"></canvas>"],
+  ["class","class=\"§\""],["id","id=\"§\""],["style=","style=\"§\""],["onclick","onclick=\"§\""],["<!\u002d\u002d \u002d\u002d>","<!\u002d\u002d § \u002d\u002d>"]],
+ css:[["color","color: §;"],["background","background: §;"],["flex","display: flex;§"],["grid","display: grid;\n  grid-template-columns: §;"],["center","display: flex;\n  align-items: center;\n  justify-content: center;§"],["margin","margin: §;"],["padding","padding: §;"],["border","border: 1px solid §;"],["radius","border-radius: §;"],["shadow","box-shadow: 0 2px 8px §;"],["width","width: §;"],["height","height: §;"],["font","font-size: §;"],["gap","gap: §;"],["position","position: §;"],["transition","transition: all .3s §;"],["@media","@media (max-width: 600px) {\n  §\n}"],[":hover",":hover {\n  §\n}"],["animation","animation: § 1s infinite;"],["var","var(--§)"],["* {}","* {\n  box-sizing: border-box;\n  §\n}"]],
+ js:[["function","function §() {\n  \n}"],["=>","(§) => {\n  \n}"],["const","const § = "],["let","let § = "],["if","if (§) {\n  \n}"],["else","else {\n  §\n}"],["for","for (let i = 0; i < §; i++) {\n  \n}"],["for of","for (const § of ) {\n  \n}"],["return","return §;"],["console","console.log(§);"],["$","document.querySelector(\"§\")"],["$$","document.querySelectorAll(\"§\")"],["byId","document.getElementById(\"§\")"],["on","§.addEventListener(\"click\", () => {\n  \n});"],["fetch","fetch(\"§\")\n  .then(r => r.json())\n  .then(d => console.log(d));"],["async","async function §() {\n  \n}"],["await","await §"],["try","try {\n  §\n} catch (e) {\n  console.error(e);\n}"],["class","class § {\n  constructor() {\n    \n  }\n}"],["setTimeout","setTimeout(() => {\n  §\n}, 1000);"],["setInterval","setInterval(() => {\n  §\n}, 1000);"],["innerHTML","§.innerHTML = "],["textContent","§.textContent = "],["JSON","JSON.stringify(§)"],["null","null"],["true","true"],["false","false"]]};
 let kmode="sym";
 function insKw(k){if(FN.has(k)){ins(k+"()");ed.setSelectionRange(ed.selectionStart-1,ed.selectionStart-1)}else ins(COL.has(k)?k+":":k+" ")}
+function insSnip(sn){const p=ed.selectionStart,b=ed.value.slice(0,p),ind=b.slice(b.lastIndexOf("\n")+1).match(/^[ \t]*/)[0];
+ sn=sn.replace(/\n/g,"\n"+ind);const i=sn.indexOf("§"),tx=sn.replace("§","");ins(tx);if(i>=0){const q=ed.selectionStart-(tx.length-i);ed.setSelectionRange(q,q)}}
 function drawKeys(){
- const kb=$("kb");kb.innerHTML="";
- (kmode==="sym"?SYM:KWS).forEach(k=>{const b=document.createElement("button");b.textContent=k==="Tab"?"⇥":k;
+ const L=curLang(),kb=$("kb");kb.innerHTML="";
+ const labs={py:["#!","if"],html:["<>","tag"],css:["{}","css"],js:["()","js"],txt:["Aa",""]}[L];
+ const tb=document.querySelectorAll("#kt button");tb[0].textContent=labs[0];tb[1].textContent=labs[1];tb[1].style.display=labs[1]?"":"none";
+ if(!labs[1])kmode="sym";
+ const items=L==="py"?(kmode==="sym"?SYM:KWS):(kmode==="sym"?SYMW:SNIP[L]);
+ items.forEach(k=>{const sn=Array.isArray(k),lab=sn?k[0]:k;const b=document.createElement("button");b.textContent=lab==="Tab"?"⇥":lab;
   b.addEventListener("pointerdown",e=>e.preventDefault());
-  b.onclick=()=>kmode==="sym"?ins(k==="Tab"?"    ":k):insKw(k);kb.appendChild(b)});
- document.querySelectorAll("#kt button").forEach(b=>b.classList.toggle("on",b.dataset.k===kmode))}
+  b.onclick=()=>{if(sn)insSnip(k[1]);else if(L==="py"&&kmode==="kw")insKw(k);else ins(k==="Tab"?IND():k)};kb.appendChild(b)});
+ tb.forEach(b=>b.classList.toggle("on",b.dataset.k===kmode))}
 document.querySelectorAll("#kt button").forEach(b=>{b.addEventListener("pointerdown",e=>e.preventDefault());b.onclick=()=>{kmode=b.dataset.k;drawKeys()}});
-drawKeys();
 
 /* ---------- actions ---------- */
-function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",1800)}
-window.onFile=(name,code)=>{S.tabs.push({name,code,path:""});S.cur=S.tabs.length-1;load()};
+function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",1800)}
+/* a file arrives from the phone: it goes to the Python or the Web workspace by its extension */
+window.onFile=(name,code,path)=>{
+ const e=EXT(name),m=(e==="html"||e==="htm"||e==="xhtml"||e==="svg"||e==="css"||e==="js"||e==="mjs"||e==="cjs"||e==="ts")?"html":(e==="py"||e==="pyw")?"py":S.mode;
+ saveNow();S.mode=m;const w=W();
+ const ex=path?w.tabs.findIndex(x=>x.path===path):-1;
+ if(ex>=0){w.tabs[ex].code=code;w.cur=ex}
+ else{let n=name,i=2;while(w.tabs.some(x=>x.name===n)){const d=name.lastIndexOf(".");n=d>0?name.slice(0,d)+"("+i+")"+name.slice(d):name+"("+i+")";i++}
+  w.tabs.push({name:n,code,path:path||""});w.cur=w.tabs.length-1}
+ load();applyModeUI();save()};
 const A=()=>window.Android||null;
 const need=f=>A()?f(A()):toast(t("nopy"));
-$("bRun").onclick=()=>need(a=>a.run(ed.value,S.tabs[S.cur].name));
+const allFiles=()=>{try{return !!(A()&&A().allFilesBuild())}catch(e){return false}};
+const usesApp=()=>{try{return !!(A()&&A().usesAppDir())}catch(e){return false}};
+/* Run: Python opens the console, web files open the HTML preview (all open tabs are served, so style.css and app.js are found) */
+function runHtml(){const a=A();if(!a){toast(t("nopy"));return}
+ const tabs=W().tabs;CT().code=ed.value;let main=CT();
+ if(langOf(main.name)!=="html")main=tabs.find(x=>/^index\.html?$/i.test(x.name))||tabs.find(x=>langOf(x.name)==="html");
+ if(!main){toast(t("nohtml"));return}
+ const files={};tabs.forEach(x=>{files[x.name]=x.code});
+ try{a.preview(main.name,JSON.stringify(files))}catch(e){toast(String(e))}}
+$("bRun").onclick=()=>{if(S.mode==="html")runHtml();else need(a=>a.run(ed.value,CT().name))};
 $("bOpen").onclick=()=>need(a=>a.openFile());
 $("bUndo").onclick=hundo;
 $("bRedo").onclick=hredo;
 const menu=on=>{$("drawer").classList.toggle("show",on);$("scrim").classList.toggle("show",on)};
 $("bMenu").onclick=()=>menu(true);$("scrim").onclick=()=>menu(false);
-document.querySelectorAll("#drawer button").forEach(b=>b.onclick=()=>{menu(false);const a=b.dataset.a;
+document.querySelectorAll("#drawer button[data-a]").forEach(b=>b.onclick=()=>{menu(false);const a=b.dataset.a;
  if(a==="new")addTab();
- else if(a==="save"){const tb=S.tabs[S.cur];tb.code=ed.value;need(()=>saveTab(tb))}
+ else if(a==="save"){const tb=CT();tb.code=ed.value;need(()=>saveTab(tb))}
+ else if(a==="files")openFm();
  else if(a==="perm")need(x=>{x.grantStorage()});
  else if(a==="term")need(x=>x.terminal());
  else if(a==="pip")need(x=>x.pip());
- else $("modal").classList.add("show")});
+ else if(a==="set")$("modal").classList.add("show")});
 
-/* ---------- settings ---------- */
+/* ---------- Python <-> HTML ---------- */
+function applyModeUI(){
+ const h=S.mode==="html";
+ document.querySelectorAll("#seg button").forEach(b=>b.classList.toggle("on",b.dataset.m===S.mode));
+ $("bMode").textContent=h?"HTML":"PY";$("bRun").title=h?t("runHtml"):"";
+ document.querySelectorAll('#drawer [data-a="term"],#drawer [data-a="pip"]').forEach(b=>b.style.display=h?"none":"");
+ const fb=document.querySelector('#drawer [data-a="files"]'),pb=document.querySelector('#drawer [data-a="perm"]');
+ if(fb)fb.style.display=usesApp()?"":"none";
+ if(pb)pb.style.display=allFiles()?"":"none";
+ const dl=$("lDir");if(dl)dl.style.display=allFiles()?"":"none";
+ $("fmT").textContent=t("files");$("fmN").textContent=t("fmNote");$("fmI").textContent="⬇ "+t("imp");$("fmX").textContent=t("ok");
+ drawKeys()}
+function setMode(m){if(m!==S.mode){saveNow();S.mode=m;load();saveNow()}applyModeUI();toast(t(m==="html"?"modeH":"modeP"))}
+document.querySelectorAll("#seg button").forEach(b=>b.onclick=()=>{setMode(b.dataset.m);menu(false)});
+$("bMode").onclick=()=>setMode(S.mode==="html"?"py":"html");
+
+/* ---------- Files screen (app folder: import, export, delete) ---------- */
+const FM=$("fm"),TEXTX=new Set("py pyw html htm xhtml css js mjs cjs ts json txt md csv log xml svg yml yaml ini cfg toml".split(" "));
+const fsz=n=>n<1024?n+" B":n<1048576?(n/1024).toFixed(1)+" KB":(n/1048576).toFixed(1)+" MB";
+function openFm(){if(!A()){toast(t("nopy"));return}FM.classList.add("show");fmDraw()}
+function fmDraw(){const a=A(),box=$("fmL");if(!a)return;let L=[];try{L=JSON.parse(a.listFiles()||"[]")}catch(e){}
+ box.innerHTML="";if(!L.length){box.textContent=t("emptyF");return}
+ L.forEach(f=>{const dir=f.s<0,row=document.createElement("div");row.className="frow";
+  const nm=document.createElement("span");nm.className="fnm";nm.textContent=(dir?"📂 ":"📄 ")+f.p;row.appendChild(nm);
+  const mk=(ic,fn)=>{const b=document.createElement("button");b.textContent=ic;b.onclick=fn;row.appendChild(b)};
+  if(!dir){const sz=document.createElement("small");sz.textContent=fsz(f.s);row.appendChild(sz);
+   if(TEXTX.has(EXT(f.p)))mk("✏",()=>{let ok=false;try{ok=a.openWorkspaceFile(f.p)}catch(e){}if(ok)FM.classList.remove("show");else toast(t("notText"))});
+   mk("⬆",()=>a.exportFile(f.p))}
+  mk("🗑",async()=>{if(await ask(t("files"),t("delF").replace("%",f.p),[[t("del"),"y","danger"],[t("cancel"),"n"]])==="y"){a.deleteWorkspaceFile(f.p);fmDraw()}});
+  box.appendChild(row)})}
+$("fmX").onclick=()=>FM.classList.remove("show");
+$("fmI").onclick=()=>need(a=>a.importFiles());
+window.pvFilesChanged=()=>{if(FM.classList.contains("show"))fmDraw()};
+window.pvResume=()=>applyModeUI();
+/* Android Back: close whatever is open first (returns true when it did) */
+window.pvBack=()=>{
+ if(dlgCancel){dlgCancel();return true}
+ if(FM.classList.contains("show")){FM.classList.remove("show");return true}
+ if($("modal").classList.contains("show")){$("modal").classList.remove("show");return true}
+ if($("drawer").classList.contains("show")){menu(false);return true}
+ return false};
+/* status / navigation bar colours follow the editor theme (Android 15+ draws under the bars) */
+function lum(h){const n=parseInt(h.slice(1),16);if(h.length!==7||isNaN(n))return 0;return(.299*(n>>16&255)+.587*(n>>8&255)+.114*(n&255))/255}
+function pushBars(bar){try{if(A()&&A().setBars)A().setBars(bar,lum(bar)>.6)}catch(e){}}
+
+
 $("oTheme").innerHTML=Object.keys(EDT).map(k=>`<option>${k}</option>`).join("");
 $("oSyn").innerHTML=Object.keys(SYN).map(k=>`<option>${k}</option>`).join("")+`<option value="Custom"></option>`;
 function drawCust(){const c=$("cust");c.classList.toggle("show",S.syn==="Custom");c.innerHTML="";
@@ -358,7 +643,7 @@ function applySettings(){
  document.querySelectorAll("[data-i]").forEach(x=>x.textContent=t(x.dataset.i));
  $("sSize").textContent=t("size");$("sAuto").textContent=t("auto");$("sOk").textContent=t("ok");
  $("oLang").value=S.lang;$("oTheme").value=S.ui;$("oSyn").value=S.syn;$("oDir").value=S.dir;$("oSize").value=S.size;$("oAuto").checked=S.auto;
- drawCust();drawTabs();
+ drawCust();drawTabs();applyModeUI();
  try{if(A())A().setDirMode(S.dir)}catch(e){}
  save();
 }
@@ -367,6 +652,6 @@ $("oSyn").onchange=()=>{S.syn=$("oSyn").value;applyTheme();drawCust();save()};
 $("oDir").onchange=()=>{S.dir=$("oDir").value;try{if(A())A().setDirMode(S.dir)}catch(e){}save()};
 $("sOk").onclick=()=>{S.lang=$("oLang").value;S.ui=$("oTheme").value;S.syn=$("oSyn").value;S.dir=$("oDir").value;S.size=Math.min(30,Math.max(10,+$("oSize").value||15));S.auto=$("oAuto").checked;applySettings();$("modal").classList.remove("show")};
 applySettings();load();
-setTimeout(async()=>{const a=A();if(!a||S.noask)return;let ok=true;try{ok=a.hasStorage()}catch(e){}if(ok)return;
+setTimeout(async()=>{const a=A();if(!a||S.noask||!allFiles())return;let ok=true;try{ok=a.hasStorage()}catch(e){}if(ok)return;
  const r=await ask(t("permT"),t("permM"),[[t("allow"),"y","pri"],[t("later"),"n"]]);if(r==="y")a.grantStorage();else{S.noask=true;saveNow()}},700);
 </script></body></html>
