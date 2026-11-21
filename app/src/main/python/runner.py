@@ -75,7 +75,14 @@ def _site(wd):
     return d
 
 
+def _quiet_warnings():
+    import warnings
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+
+
 def _setup(b, wd, pub=""):
+    _quiet_warnings()
     """wd = private app folder (libraries). pub = public folder on the phone storage (user files)."""
     global _IO, _HOME
     _IO = b
@@ -491,12 +498,13 @@ def _plat():
     else: abi = "armeabi_v7a"
     return ["android_%d_%s" % (api, abi) for api in range(16, 25)]
 
-def _pipcmd(d, a, extra=()):
+def _pipcmd(d, a, extra=(), prebuilt=True):
     v = sys.version_info
     cmd = ["install", "--target", d, "--upgrade", "--no-warn-script-location", "--no-warn-conflicts",
            "--disable-pip-version-check", "--only-binary=:all:", "--implementation", "cp",
-           "--python-version", "%d.%d" % (v[0], v[1]), "--abi", "cp%d%d" % (v[0], v[1]),
-           "--extra-index-url", PIP_INDEX] + list(extra)
+           "--python-version", "%d.%d" % (v[0], v[1]), "--abi", "cp%d%d" % (v[0], v[1])]
+    if prebuilt: cmd += ["--extra-index-url", PIP_INDEX]      # the Android (Chaquopy) repository with numpy, pandas ...
+    cmd += list(extra)
     for p in _plat(): cmd += ["--platform", p]
     return cmd + list(a)
 
@@ -514,20 +522,22 @@ def _cacert(wd):
         with open(p, "wb") as f: f.write(pkgutil.get_data("pip._vendor.certifi", "cacert.pem"))
     return p
 
-def _install(a, d):
+def _install(a, d, prebuilt=True):
+    """returns 0 when everything was installed"""
     try:
         from pip._internal.cli.main import main
         _fix_pip(d)
         extra = []
         try: extra = ["--cert", _cacert(os.path.dirname(d))]
         except Exception: pass
-        rc = main(_pipcmd(d, a, extra))
+        rc = main(_pipcmd(d, a, extra, prebuilt))
     except SystemExit as e:
         rc = e.code or 0
     except BaseException:
         traceback.print_exc(); rc = 1
     if rc: print(HINT)
     else: _preload(d)
+    return 1 if rc else 0
 
 def _pip(a, d):
     if not a or a[0] in ("list", "freeze"):
@@ -616,3 +626,102 @@ def pip_page(b, wd, pub=""):
         if a and a[0] in ("install", "uninstall", "list"):
             _pip(a, d)
             print("-- done --")
+
+
+# ---------------- Pip screen API (called from PipActivity) ----------------
+def pip_init(b, wd, pub=""):
+    """redirects print() to b.write and returns the folder where libraries are installed"""
+    return _setup(b, wd, pub)
+
+
+def pip_list_json(d):
+    import json
+    out = [{"n": n, "v": v, "u": True} for n, v, _ in _dists(d)]
+    have = set(_norm(x["n"]) for x in out)
+    try:                                    # libraries that come with the app (pip itself)
+        import importlib.metadata as md
+        v = md.version("pip")
+        if "pip" not in have: out.append({"n": "pip", "v": v, "u": False})
+    except Exception:
+        pass
+    return json.dumps(sorted(out, key=lambda x: x["n"].lower()))
+
+
+def pip_install(text, d, prebuilt=True):
+    """text = what the user typed: 'numpy', 'requests==2.31.0', 'a b c' ... returns 0 on success"""
+    try:
+        a = shlex.split(text)
+    except ValueError as e:
+        print("✖", e); return 1
+    a = [x for x in a if x]
+    if not a:
+        print("✖ اكتب اسم المكتبة / type a library name"); return 1
+    print("$ pip install " + " ".join(a) + ("" if prebuilt else "   (PyPI only)"))
+    return _install(a, d, bool(prebuilt))
+
+
+def pip_uninstall(name, d):
+    """returns 0 when the library is gone"""
+    _pip(["uninstall", name], d)
+    return 0 if not any(_norm(n) == _norm(name) for n, _, _ in _dists(d)) else 1
+
+
+def _http_get(url, timeout=6):
+    import urllib.request
+    rq = urllib.request.Request(url, headers={"User-Agent": "Pyvora-pip"})
+    with urllib.request.urlopen(rq, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+_CHAQ = {"names": None}
+
+
+def _chaquopy_names():
+    """names in the Android repository (None when its index page cannot be read)"""
+    if _CHAQ["names"] is None:
+        try:
+            html = _http_get(PIP_INDEX + "/", 8)
+            names = set()
+            for h in re.findall(r'href="([^"#?]+)"', html):
+                n = h.rstrip("/").rsplit("/", 1)[-1]
+                if n and not n.startswith((".", "?")): names.add(n.lower())
+            _CHAQ["names"] = names if len(names) > 5 else set()
+        except Exception:
+            _CHAQ["names"] = set()
+    return _CHAQ["names"]
+
+
+def _pypi_info(name):
+    import json
+    try:
+        j = json.loads(_http_get("https://pypi.org/pypi/%s/json" % name, 6))
+        i = j.get("info", {})
+        return {"n": i.get("name") or name, "v": i.get("version", ""), "d": (i.get("summary") or "")[:140]}
+    except Exception:
+        return None
+
+
+def pip_search_json(q):
+    """libraries whose name contains q: from the Android repository (if listed) + an exact lookup on PyPI"""
+    import json
+    q = (q or "").strip().lower()
+    out, seen = [], set()
+    if not q: return "[]"
+    names = _chaquopy_names()
+    for n in sorted(names):
+        if q in n and _norm(n) not in seen and len(out) < 40:
+            seen.add(_norm(n)); out.append({"n": n, "v": "", "d": "", "a": True})
+    exact = re.sub(r"[^a-z0-9._-]", "", q)
+    if exact:
+        info = _pypi_info(exact)
+        if info and _norm(info["n"]) not in seen:
+            info["a"] = False; out.insert(0, info); seen.add(_norm(info["n"]))
+    # version + one-line description for the first results (looked up in parallel on PyPI)
+    todo = [o for o in out[:8] if not o.get("d")]
+    if todo:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for o, info in zip(todo, ex.map(lambda o: _pypi_info(o["n"]), todo)):
+                if info: o["v"] = info["v"]; o["d"] = info["d"]
+    return json.dumps(out)
+
