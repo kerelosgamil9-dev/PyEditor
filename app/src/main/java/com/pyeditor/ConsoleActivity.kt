@@ -48,6 +48,7 @@ open class ConsoleActivity : Activity() {
     private var guiFailed = false
     private var mode = "run"
     private var wantInput = false
+    private var inputUsed = false
     private var inErr = false
     private val webPending = ArrayList<String>()
 
@@ -64,10 +65,11 @@ open class ConsoleActivity : Activity() {
         fun readLine(): String {
             runOnUiThread {
                 wantInput = true
+                inputUsed = true
                 if (web?.visibility == View.VISIBLE) showGui(false)
                 updateRow()
                 input.requestFocus()
-                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, 0)
             }
             val s = q.take()
             runOnUiThread { wantInput = false; updateRow() }
@@ -88,7 +90,8 @@ open class ConsoleActivity : Activity() {
         val i = s.lastIndexOf('\u000c')
         if (i >= 0) { tv.text = ""; inErr = false; appendMarked(s.substring(i + 1)) } else appendMarked(s)
         if (tv.length() > 300000) tv.text = tv.text.subSequence(tv.length() - 200000, tv.length())
-        sv.post { sv.fullScroll(View.FOCUS_DOWN) }
+        // scrollTo, not fullScroll: fullScroll moves the keyboard focus from the input box to the output text
+        if (sv.visibility == View.VISIBLE) sv.post { sv.scrollTo(0, maxOf(0, tv.height - sv.height + sv.paddingTop + sv.paddingBottom)) }
     }
 
     /** text between \u0001 and \u0002 comes from stderr and is painted red */
@@ -114,10 +117,11 @@ open class ConsoleActivity : Activity() {
     /** the input box exists only while the program is waiting for input() (always shown in terminal / pip) */
     private fun updateRow() {
         val gui = web?.visibility == View.VISIBLE
-        row.visibility = if (wantInput || (mode != "run" && !gui)) View.VISIBLE else View.GONE
+        row.visibility = if (wantInput || (inputUsed && !gui) || (mode != "run" && !gui)) View.VISIBLE else View.GONE
     }
 
     private fun showGui(on: Boolean) {
+        tv.setTextIsSelectable(!on)      // a selectable text view can grab the focus (and close the keyboard) from the page
         web?.visibility = if (on) View.VISIBLE else View.GONE
         sv.visibility = if (on) View.GONE else View.VISIBLE
         updateRow()
@@ -158,6 +162,7 @@ open class ConsoleActivity : Activity() {
         val s = input.text.toString()
         if (prefix.isNotEmpty() && s.isBlank()) return
         input.setText("")
+        input.requestFocus()
         val line = if (prefix.isEmpty()) s else "$prefix ${s.trim()}"
         io.write((if (prefix.isEmpty()) s else "\n$ pip $line") + "\n")
         q.put(line + "\n")
@@ -246,7 +251,7 @@ open class ConsoleActivity : Activity() {
                 }
             } catch (e: Throwable) { io.write("\n$e\n") }
             io.write(if (mode == "run") "\n[Finished ✔]\n" else "\n[Closed]\n")
-            runOnUiThread { wantInput = false; status.text = "$title ✔"; showGui(false) }
+            runOnUiThread { wantInput = false; inputUsed = false; status.text = "$title ✔"; showGui(false) }
         }
     }
 

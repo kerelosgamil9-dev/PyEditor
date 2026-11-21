@@ -124,7 +124,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun pip() {
-            runOnUiThread { startActivity(Intent(this@MainActivity, ToolActivity::class.java).putExtra("mode", "pip")) }
+            runOnUiThread { startActivity(Intent(this@MainActivity, PipActivity::class.java)) }
         }
 
         // ---------------------------------------------------------------- HTML preview

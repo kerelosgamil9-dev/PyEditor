@@ -99,7 +99,7 @@ class HtmlActivity : Activity() {
             consText.append(sb)
             if (consText.length() > 120000) consText.text = consText.text.subSequence(consText.length() - 80000, consText.length())
             if (level == 2) { errors++; updateConsBtn() }
-            consScroll.post { consScroll.fullScroll(View.FOCUS_DOWN) }
+            consScroll.post { consScroll.scrollTo(0, maxOf(0, consText.height - consScroll.height)) }
         }
     }
 
@@ -111,7 +111,7 @@ class HtmlActivity : Activity() {
     private fun toggleConsole() {
         val show = consPanel.visibility != View.VISIBLE
         consPanel.visibility = if (show) View.VISIBLE else View.GONE
-        if (show) consScroll.post { consScroll.fullScroll(View.FOCUS_DOWN) }
+        if (show) consScroll.post { consScroll.scrollTo(0, maxOf(0, consText.height - consScroll.height)) }
     }
 
     private fun evalInput() {
