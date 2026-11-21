@@ -22,7 +22,12 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode"/>
 
-        <!-- Python console / terminal / pip run in their own process -->
+        <!-- Pip screen: libraries, search, install, quick install -->
+        <activity android:name=".PipActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode"/>
+
+        <!-- Python console / terminal run in their own process -->
         <activity android:name=".ConsoleActivity" android:exported="false"
             android:process=":run"
             android:windowSoftInputMode="adjustResize"
