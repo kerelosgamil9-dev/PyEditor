@@ -517,7 +517,7 @@ async function closeTab(i){if(i===W().cur)W().tabs[i].code=ed.value;const tb=W()
  if(tb.code.trim()){const r=await ask(t("closeT"),t("closeM").replace("%",tb.name),[[t("del"),"del","danger"],[t("sv"),"save","pri"],[t("cancel"),"cancel"]]);
   if(r!=="del"&&r!=="save")return;
   if(r==="save"&&!saveTab(tb))return}
- W().tabs.splice(i,1);if(!W().tabs.length)W().tabs.push(newTab());
+ W().tabs.splice(i,1);if(!W().tabs.length)W().tabs.push(S.mode==="html"?{name:"index.html",code:"",path:""}:newTab());
  if(i<W().cur)W().cur--;W().cur=Math.max(0,Math.min(W().cur,W().tabs.length-1));load();save()}
 
 /* ---------- keys bar ---------- */
