@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pip</title>
+<style>
+:root{--bar:#172a3e;--bg:#2f2f2f;--fg:#ececec;--dim:#a8a8a8;--ac:#f0d251;--btn:#555;--line:#444;--ok:#7ee787;--err:#ff8a80}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Roboto,sans-serif}
+body{display:flex;flex-direction:column;overflow:hidden}
+#top{display:flex;align-items:center;gap:22px;background:var(--bar);padding:14px 16px;font-size:22px;font-weight:600}
+#top button{background:none;border:0;color:var(--fg);font-size:30px;line-height:1;padding:4px 8px 4px 0}
+#tabs{display:flex;overflow-x:auto;background:var(--bar);scrollbar-width:none;flex:none}
+#tabs::-webkit-scrollbar{display:none}
+#tabs button{flex:none;background:none;border:0;border-bottom:3px solid transparent;color:#aab4c0;font-size:15px;font-weight:600;letter-spacing:.3px;padding:15px 18px;text-transform:uppercase}
+#tabs button.on{color:#fff;border-bottom-color:var(--ac)}
+#pages{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+section{display:none;padding:14px 16px 30px}section.on{display:block}
+.row{display:flex;gap:12px;align-items:flex-end;margin-bottom:12px}
+input[type=text]{flex:1;min-width:0;background:none;border:0;border-bottom:2px solid var(--ac);color:var(--fg);font-size:19px;padding:12px 2px;outline:none;direction:ltr}
+input[type=text]::placeholder{color:#9a9a9a}
+button.b{background:var(--btn);color:#fff;border:0;border-radius:4px;font-size:15px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:13px 16px;box-shadow:0 1px 3px #0006}
+button.b:active{background:#6a6a6a}
+button.b[disabled]{opacity:.4}
+button.sm{padding:11px 12px;font-size:13px}
+button.red{background:#6b3a3a}
+.chk{display:flex;align-items:center;gap:12px;font-size:17px;padding:8px 0}
+.chk input{width:26px;height:26px;accent-color:var(--ac)}
+.item{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.item .tx{flex:1;min-width:0}
+.item .n{font-size:21px;word-break:break-word;direction:ltr;text-align:left}
+.item .v,.item .d{font-size:15px;color:var(--dim);margin-top:4px;word-break:break-word}
+.item .tag{display:inline-block;font-size:11px;font-weight:700;color:#10230f;background:var(--ok);border-radius:3px;padding:1px 6px;margin-inline-start:8px;vertical-align:middle}
+.note{color:var(--dim);font-size:15px;line-height:1.5;margin:6px 0 10px}
+.empty{color:var(--dim);padding:26px 4px;font-size:16px}
+.warn{margin-top:18px;padding:12px;border:1px solid var(--line);border-radius:6px;color:var(--dim);font-size:14px;line-height:1.6}
+#log{display:none;position:fixed;left:0;right:0;bottom:0;max-height:62%;background:#1b1b1b;border-top:2px solid var(--ac);z-index:5;flex-direction:column}
+#log.show{display:flex}
+#lh{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#222;font-size:16px;font-weight:600}
+#lh .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lh .st.ok{color:var(--ok)}#lh .st.err{color:var(--err)}
+#lh button{background:none;border:0;color:var(--fg);font-size:22px;padding:2px 8px}
+.spin{width:18px;height:18px;border:3px solid #555;border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#lt{margin:0;padding:10px 14px 16px;overflow:auto;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;color:#d0d0d0;flex:1;direction:ltr;text-align:left}
+#dlg{display:none;position:fixed;inset:0;background:#000a;z-index:9;align-items:center;justify-content:center}
+#dlg.show{display:flex}
+#dlg .bx{background:#3a3a3a;border-radius:10px;padding:20px;width:min(88%,340px)}
+#dlg p{margin:0 0 18px;font-size:18px;line-height:1.5;word-break:break-word}
+#dlg .bt{display:flex;gap:10px;justify-content:flex-end}
+</style></head><body>
+<div id="top"><button id="back" aria-label="back">←</button><span>Pip</span></div>
+<div id="tabs">
+ <button data-t="lib" class="on">Libraries</button><button data-t="search">Search libraries</button><button data-t="inst">Install</button><button data-t="quick">Quick install</button>
+</div>
+<div id="pages">
+ <section id="p-lib" class="on">
+  <input type="text" id="flt" placeholder="Filter / تصفية…" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div id="libs"><div class="empty">Loading…</div></div>
+ </section>
+ <section id="p-search">
+  <div class="row"><input type="text" id="q" placeholder="Library name (or part)… / اسم المكتبة" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="b" id="bq">Search</button></div>
+  <div id="sres"><div class="note">Type part of a name. You can search the Android library repository and look up any exact name on PyPI.<br>اكتب جزء من اسم المكتبة وابحث.</div></div>
+ </section>
+ <section id="p-inst">
+  <div class="row"><input type="text" id="nm" placeholder="Library name / اسم المكتبة" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"><button class="b" id="bi">Install</button></div>
+  <label class="chk"><input type="checkbox" id="pre" checked><span>Use prebuilt libraries repository</span></label>
+  <div class="note">Checked: also looks in the Android repository (numpy, pandas, scipy, pillow …). Unchecked: PyPI only, pure-Python libraries.<br>You can write a version (<b>requests==2.31.0</b>) or several names separated by spaces.</div>
+ </section>
+ <section id="p-quick">
+  <div class="note">Install from the repository with prebuilt wheel packages</div>
+  <div id="qlist"></div>
+  <div class="warn">Not available on Android: pygame, PyQt5 / PyQt6, PySide6, kivy, tensorflow, torch, opencv with camera. These need a desktop or a native build.<br>مش بتشتغل على أندرويد: pygame و PyQt و kivy و tensorflow و torch.</div>
+ </section>
+</div>
+<div id="log"><div id="lh"><div class="spin" id="sp"></div><span class="st" id="st"></span><button id="lc" aria-label="close">✕</button></div><pre id="lt"></pre></div>
+<div id="dlg"><div class="bx"><p id="dm"></p><div class="bt"><button class="b" id="dn">Cancel</button><button class="b red" id="dy">Uninstall</button></div></div></div>
+<script>
+const $=id=>document.getElementById(id);
+const norm=n=>String(n).toLowerCase().replace(/[-_.]+/g,"_");
+/* popular libraries: shown in "Quick install" and found by the local search (a few may have no Android build: the log says so) */
+const POP=[["numpy","Fundamental package for array computing"],["pandas","Data analysis and manipulation"],["matplotlib","Plots and charts"],["scipy","Scientific computing"],
+["pillow","Image processing (PIL)"],["scikit-learn","Machine learning"],["opencv-python","Computer vision (no camera)"],["requests","HTTP requests for humans"],
+["beautifulsoup4","Parse HTML and XML"],["lxml","Fast XML / HTML parser"],["pyyaml","YAML files"],["flask","Small web framework"],["jinja2","Templates engine"],
+["sympy","Symbolic mathematics"],["networkx","Graphs and networks"],["cryptography","Encryption and certificates"],["rich","Colourful terminal output"],["tqdm","Progress bars"],
+["openpyxl","Read / write Excel .xlsx"],["xlsxwriter","Create Excel files"],["reportlab","Create PDF files"],["fpdf2","Simple PDF generator"],["pypdf","Read / merge PDF files"],
+["arabic-reshaper","Arabic text shaping"],["python-bidi","Right-to-left text"],["qrcode","Make QR codes"],["pygments","Syntax highlighting"],["markdown","Markdown to HTML"],
+["httpx","Modern HTTP client"],["aiohttp","Async HTTP client / server"],["websockets","WebSocket client / server"],["python-dateutil","Date utilities"],["pytz","Time zones"],
+["emoji","Emoji for Python"],["faker","Fake data"],["tabulate","Pretty tables"],["colorama","Coloured text"],["click","Command line tools"],["pydantic","Data validation"],
+["yt-dlp","Download videos"],["gtts","Google text-to-speech"],["deep-translator","Translate text"],["telethon","Telegram client"],["regex","Better regular expressions"],["joblib","Lightweight pipelines"]];
+let libs=[],busy=false,curOp="",lastQ="";
+const inst=n=>libs.some(l=>norm(l.n)===norm(n));
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function A(){return window.Android||null}
+
+/* ---------- tabs ---------- */
+function tab(t){document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+ document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id==="p-"+t));$("pages").scrollTop=0;
+ if(t==="lib")drawLibs();if(t==="quick")drawQuick()}
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>tab(b.dataset.t));
+
+/* ---------- lists ---------- */
+function row(n,v,d,btn,tag){return `<div class="item"><div class="tx"><div class="n">${esc(n)}${tag?`<span class="tag">${esc(tag)}</span>`:""}</div>${v?`<div class="v">${esc(v)}</div>`:""}${d?`<div class="d">${esc(d)}</div>`:""}</div>${btn}</div>`}
+function btnFor(n){return inst(n)?`<button class="b sm red" data-u="${esc(n)}"${busy?" disabled":""}>Uninstall</button>`:`<button class="b sm" data-i="${esc(n)}"${busy?" disabled":""}>Install</button>`}
+function wire(box){box.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>doInstall(b.dataset.i));box.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>askUninstall(b.dataset.u))}
+function drawLibs(){const f=$("flt").value.trim().toLowerCase(),box=$("libs");
+ const L=libs.filter(l=>!f||l.n.toLowerCase().includes(f));
+ if(!libs.length){box.innerHTML='<div class="empty">No libraries installed yet.<br>مفيش مكتبات متثبتة لسه — اضغط Quick install.</div>';return}
+ if(!L.length){box.innerHTML='<div class="empty">—</div>';return}
+ box.innerHTML=L.map(l=>row(l.n,l.v,"",l.u?`<button class="b sm red" data-u="${esc(l.n)}"${busy?" disabled":""}>Uninstall</button>`:"")).join("");wire(box)}
+function drawQuick(){const box=$("qlist");box.innerHTML=POP.map(p=>row(p[0],"",p[1],btnFor(p[0]),inst(p[0])?"✔":"")).join("");wire(box)}
+function drawSearch(list,q){const box=$("sres");
+ if(!list.length){box.innerHTML=`<div class="note">No result for “${esc(q)}”.<br>جرّب اسم تاني، أو جرّب تثبته من تاب Install لو عارف اسمه بالظبط.</div>`;return}
+ box.innerHTML=list.map(r=>row(r.n,r.v,r.d,btnFor(r.n),r.a?"Android":(r.p?"★":""))).join("");wire(box)}
+$("flt").oninput=drawLibs;
+
+/* ---------- search ---------- */
+function localMatches(q){const k=norm(q);return POP.filter(p=>norm(p[0]).includes(k)||p[1].toLowerCase().includes(q.toLowerCase())).map(p=>({n:p[0],v:"",d:p[1],a:false,p:true}))}
+function doSearch(){const q=$("q").value.trim();if(!q||busy)return;lastQ=q;$("sres").innerHTML='<div class="note">Searching… / بيدوّر…</div>';
+ window._loc=localMatches(q);if(!A()){onSearch(q,"[]");return}
+ try{A().search(q)}catch(e){onSearch(q,"[]")}}
+$("bq").onclick=doSearch;$("q").onkeydown=e=>{if(e.key==="Enter")doSearch()};
+window.onSearch=(q,json)=>{if(q!==lastQ)return;let r=[];try{r=JSON.parse(json)}catch(e){}
+ const seen=new Set(r.map(x=>norm(x.n)));const loc=(window._loc||[]).filter(x=>!seen.has(norm(x.n)));
+ const byName=new Map(r.map(x=>[norm(x.n),x]));
+ drawSearch(r.concat(loc).slice(0,60),q)};
+
+/* ---------- install / uninstall ---------- */
+function setBusy(b){busy=b;document.querySelectorAll("button.b").forEach(x=>{if(x.id!=="dn"&&x.id!=="dy")x.disabled=b});$("sp").style.display=b?"block":"none"}
+function showLog(title){$("lt").textContent="";$("st").textContent=title;$("st").className="st";$("log").classList.add("show")}
+function doInstall(text){text=String(text||"").trim();if(!text||busy)return;
+ if(!A()){return}
+ setBusy(true);curOp="install";showLog("Installing "+text+" …");
+ try{A().install(text,$("pre").checked)}catch(e){onErr(String(e))}}
+$("bi").onclick=()=>doInstall($("nm").value);$("nm").onkeydown=e=>{if(e.key==="Enter")doInstall($("nm").value)};
+let pendingU="";
+function askUninstall(n){if(busy)return;pendingU=n;$("dm").textContent="Uninstall “"+n+"” ?";$("dlg").classList.add("show")}
+$("dn").onclick=()=>{$("dlg").classList.remove("show");pendingU=""};
+$("dy").onclick=()=>{const n=pendingU;$("dlg").classList.remove("show");pendingU="";if(!n||!A())return;
+ setBusy(true);curOp="uninstall";showLog("Uninstalling "+n+" …");try{A().uninstall(n)}catch(e){onErr(String(e))}};
+$("lc").onclick=()=>{if(!busy)$("log").classList.remove("show")};
+
+/* ---------- callbacks from the app ---------- */
+window.onReady=()=>{setBusy(false);if(A())A().list()};
+window.onList=json=>{try{libs=JSON.parse(json)}catch(e){libs=[]}drawLibs();drawQuick();
+ const s=document.querySelector("section.on");if(s&&s.id==="p-search"&&lastQ)drawSearch([],lastQ)}
+window.onLog=t=>{const el=$("lt");let s=el.textContent;
+ const i=t.lastIndexOf("\r");if(i>=0){s=s.slice(0,s.lastIndexOf("\n")+1);t=t.slice(i+1)}   /* progress bars rewrite the last line */
+ s+=t;if(s.length>60000)s=s.slice(-40000);el.textContent=s;el.scrollTop=el.scrollHeight};
+window.onDone=(op,rc)=>{setBusy(false);const st=$("st");
+ if(op==="install"){st.textContent=rc===0?"✔ Installed / تم التثبيت":"✖ Failed / فشل";st.className="st "+(rc===0?"ok":"err")}
+ else if(op==="uninstall"){st.textContent=rc===0?"✔ Removed / تم الحذف":"✖ Failed / فشل";st.className="st "+(rc===0?"ok":"err")}
+ if(A())A().list()};
+window.onErr=m=>{setBusy(false);$("log").classList.add("show");const st=$("st");st.textContent="✖ "+m;st.className="st err"};
+/* Android Back: close the dialog / log first, otherwise leave the screen */
+window.pvBack=()=>{if($("dlg").classList.contains("show")){$("dlg").classList.remove("show");return true}
+ if($("log").classList.contains("show")&&!busy){$("log").classList.remove("show");return true}return false};
+$("back").onclick=()=>{if(A())A().close()};
+setBusy(true);$("sp").style.display="none";drawQuick();
+</script></body></html>

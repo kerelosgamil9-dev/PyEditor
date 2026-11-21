@@ -360,7 +360,7 @@ function highlight(src){return hlFor(src).map(wrapLine).join("")}
 /* ---------- editor ---------- */
 const ed=$("ed"),hl=$("hl"),cell=$("cell");
 /* Big files: only the lines on screen are drawn (fixed line height, no wrapping) so pasting thousands of lines stays fast */
-const VL=12000,VN=700,wrapEl=document.querySelector(".wrap");
+const VL=250000,VN=6000,wrapEl=document.querySelector(".wrap");
 let vm=false,wa=0,wb=0,curL=[""],LH=23,rhT=0;
 function setVm(on){if(on===vm)return;vm=on;cell.classList.toggle("vm",on);wrapEl.classList.toggle("vm",on);
  if(!on){hl.style.paddingTop="";hl.style.paddingBottom="";hl.style.counterReset="";cell.style.removeProperty("--mx")}}
