@@ -192,7 +192,7 @@ delete S.tabs;delete S.cur;
 if(S.mode!=="html")S.mode="py";
 for(const m of["py","html"]){const w=S.ws[m]=S.ws[m]||{tabs:[],cur:0};
  w.tabs=(Array.isArray(w.tabs)?w.tabs:[]).filter(x=>x&&typeof x.name==="string");
- w.tabs.forEach(x=>{if(typeof x.code!=="string")x.code="";if(x.path==null)x.path="";if(m==="py"&&x.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")x.code="";if(m==="html"&&x.code===HTML_TPL)x.code=""});
+ w.tabs.forEach(x=>{if(typeof x.code!=="string"||x.code.length>3000000)x.code="";if(x.path==null)x.path="";if(m==="py"&&x.code==="print(\"Hello, World!\")\nprint(\"أهلا كلود\")\n")x.code="";if(m==="html"&&x.code===HTML_TPL)x.code=""});
  if(!(w.cur>=0&&w.cur<w.tabs.length))w.cur=0}
 const W=()=>S.ws[S.mode],CT=()=>W().tabs[W().cur];
 const t=k=>I18N[S.lang][k];
@@ -554,6 +554,7 @@ document.querySelectorAll("#kt button").forEach(b=>{b.addEventListener("pointerd
 function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display="none",1800)}
 /* a file arrives from the phone: it goes to the Python or the Web workspace by its extension */
 window.onFile=(name,code,path)=>{
+ if(typeof code!=="string"||code.length>3000000){toast("الملف كبير أوي / File too large");return}
  const e=EXT(name),m=(e==="html"||e==="htm"||e==="xhtml"||e==="svg"||e==="css"||e==="js"||e==="mjs"||e==="cjs"||e==="ts")?"html":(e==="py"||e==="pyw")?"py":S.mode;
  saveNow();S.mode=m;const w=W();
  const ex=path?w.tabs.findIndex(x=>x.path===path):-1;
