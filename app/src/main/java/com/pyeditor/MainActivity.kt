@@ -305,8 +305,27 @@ class MainActivity : Activity() {
             when (req) {
                 1 -> {
                     val uri = data.data ?: return
-                    val text = contentResolver.openInputStream(uri)!!.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                    js("onFile(${JSONObject.quote(displayName(uri))}, ${JSONObject.quote(text)}, \"\")")
+                    val name = displayName(uri)
+                    // read at most 3 MB: a huge / binary file (a .whl, .zip, image...) must never reach the editor, it freezes the page
+                    val limit = 3_000_000
+                    val bytes = contentResolver.openInputStream(uri)!!.use { input ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(16384)
+                        while (out.size() <= limit) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                        }
+                        out.toByteArray()
+                    }
+                    var binary = bytes.size > limit
+                    if (!binary) for (i in 0 until minOf(bytes.size, 8192)) if (bytes[i].toInt() == 0) { binary = true; break }
+                    if (binary) {
+                        js("toast(${JSONObject.quote("الملف ده مش ملف كود (كبير أو ثنائي) فمش هينفع يتفتح في المحرر. لو دي مكتبة whl ثبّتها من Pip. / Not a text file")})")
+                        return
+                    }
+                    val text = String(bytes, Charsets.UTF_8)
+                    js("onFile(${JSONObject.quote(name)}, ${JSONObject.quote(text)}, \"\")")
                 }
                 2 -> {
                     val uri = data.data ?: return
