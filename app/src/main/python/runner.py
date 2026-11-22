@@ -63,6 +63,17 @@ def _preload(d):
         pass
 
 
+def _ssl_env(wd):
+    """requests/urllib3 verify HTTPS with a CA bundle. Point them at the same cacert.pem that pip already uses
+    successfully, otherwise requests fails with an SSLError (reported as ConnectionError) on Android."""
+    try:
+        p = _cacert(wd)
+        for k in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+            os.environ[k] = p
+    except Exception:
+        pass
+
+
 def _site(wd):
     d = os.path.join(wd, "site-packages")
     os.makedirs(d, exist_ok=True)
@@ -70,6 +81,7 @@ def _site(wd):
         sys.path.insert(0, d)
         _preload(d)
     os.environ.setdefault("HOME", wd)
+    _ssl_env(wd)
     os.environ["MPLCONFIGDIR"] = os.path.join(wd, "mpl")
     os.environ.setdefault("MPLBACKEND", "module://pyvora_mpl")
     return d
