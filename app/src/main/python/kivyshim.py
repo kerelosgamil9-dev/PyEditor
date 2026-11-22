@@ -435,10 +435,10 @@ class Label(Widget):
 
     def _cfg(self):
         h = str(self.halign)
-        an = {"left": "w", "right": "e", "center": "center", "justify": "w"}.get(h, "center")
+        an = {"left": "w", "right": "e", "center": "c", "justify": "w"}.get(h, "c")
         va = str(self.valign)
-        if va == "top": an = ("n" if an == "center" else "n" + an)
-        elif va == "bottom": an = ("s" if an == "center" else "s" + an)
+        if va == "top": an = ("n" if an == "c" else "n" + an)
+        elif va == "bottom": an = ("s" if an == "c" else "s" + an)
         c = {"text": self.text, "fg": _hex(self.color), "bg": self._bgc(), "font": self._font(),
              "anchor": an, "justify": {"left": "left", "right": "right"}.get(h, "center")}
         ts = self.text_size
@@ -462,7 +462,7 @@ class Button(Label):
 
     def _cfg(self):
         c = Label._cfg(self)
-        c.update(anchor="center", relief="flat", bd=0,
+        c.update(anchor="c", relief="flat", bd=0,
                  activebackground=_mix(self.background_color, .18) if self.background_normal else _hex([x * .7 for x in self.background_color[:3]]),
                  activeforeground=_hex(self.color),
                  state="disabled" if self.disabled else "normal")
