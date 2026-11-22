@@ -112,6 +112,8 @@ def _setup(b, wd, pub=""):
     if _HOME not in sys.path: sys.path.insert(0, _HOME)
     import tkshim
     tkshim._install()
+    import kivyshim
+    kivyshim._install()
     return _site(wd)
 
 
@@ -122,7 +124,7 @@ _SOFT = {"match", "case"}
 _EXEMPT = {"__file__", "__name__", "__doc__", "__builtins__", "__spec__", "__loader__", "__package__",
            "__class__", "__path__", "__annotations__", "__cached__"}
 _PYTHON2 = {"raw_input": "input", "unicode": "str", "xrange": "range", "unichr": "chr", "long": "int"}
-_NOANDROID = ("pygame", "kivy", "PyQt5", "PyQt6", "PySide2", "PySide6", "wx", "gi")
+_NOANDROID = ("pygame", "PyQt5", "PyQt6", "PySide2", "PySide6", "wx", "gi")
 _PIPNAME = {"cv2": "opencv-python", "PIL": "pillow", "sklearn": "scikit-learn", "yaml": "pyyaml",
             "bs4": "beautifulsoup4", "dateutil": "python-dateutil", "Crypto": "pycryptodome"}
 
@@ -190,7 +192,7 @@ def _installed_names():
 
 def _known_modules():
     s = set(getattr(sys, "stdlib_module_names", ())) | set(sys.builtin_module_names) | _installed_names()
-    s |= {"tkinter", "matplotlib", "numpy", "PIL", "requests"}
+    s |= {"tkinter", "matplotlib", "numpy", "PIL", "requests", "kivy"}
     return {x for x in s if not x.startswith("_")}
 
 
@@ -454,8 +456,9 @@ def _static_check(tree, lines):
 
 
 def _exec(code, name):
-    import tkshim
+    import tkshim, kivyshim
     tkshim._reset()
+    kivyshim._reset()
     _SRC["code"] = code; _SRC["name"] = name
     try:
         tree = compile(code, name, "exec", flags=ast.PyCF_ONLY_AST)
