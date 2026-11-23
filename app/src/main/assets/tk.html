@@ -329,6 +329,13 @@ function size(w){const o=w.o,s=(w.spw?w.in:w.el).style,t=w.type,ch=CH.includes(t
 /* ---- layout ---- */
 const AN=a=>(a&&a!=='center')?a:'';
 let MAXIH=innerHeight,FOCT=0;addEventListener('resize',()=>{MAXIH=Math.max(MAXIH,innerHeight)});
+/* Android WebView re-opens the keyboard when a non-input is tapped while an input still holds focus: drop the focus first */
+let PB=null;
+document.addEventListener('pointerdown',e=>{PB=null;const a=document.activeElement;
+ if(!a||!/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+ if(e.target.closest&&e.target.closest('input,textarea,select,.tx,.spw,[contenteditable]'))return;
+ if(innerHeight>=MAXIH-100)a.blur();else PB=a},true);
+document.addEventListener('click',()=>{if(PB){const a=PB;PB=null;setTimeout(()=>{if(document.activeElement===a)a.blur()},0)}});
 function resetPlace(w){const s=w.el.style;['position','left','top','transform','gridColumn','gridRow','justifySelf','alignSelf','margin','flex'].forEach(k=>s[k]='')}
 function relay(p){
  if(!p||!W[p.id])return;const box=p.box||p.el;
