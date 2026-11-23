@@ -328,11 +328,12 @@ function size(w){const o=w.o,s=(w.spw?w.in:w.el).style,t=w.type,ch=CH.includes(t
 
 /* ---- layout ---- */
 const AN=a=>(a&&a!=='center')?a:'';
+let MAXIH=innerHeight,FOCT=0;addEventListener('resize',()=>{MAXIH=Math.max(MAXIH,innerHeight)});
 function resetPlace(w){const s=w.el.style;['position','left','top','transform','gridColumn','gridRow','justifySelf','alignSelf','margin','flex'].forEach(k=>s[k]='')}
 function relay(p){
  if(!p||!W[p.id])return;const box=p.box||p.el;
- const ae=document.activeElement,keep=(ae&&ae!==document.body&&box.contains&&box.contains(ae))?{el:ae,s:selS(ae),e:selE(ae)}:null;
- try{relay2(p,box)}finally{if(keep&&keep.el.isConnected!==false){try{keep.el.focus({preventScroll:true});keep.el.setSelectionRange(keep.s,keep.e)}catch(x){}}}}
+ const ae=document.activeElement,keep=(ae&&ae!==document.body&&box.contains&&box.contains(ae))?{el:ae,s:selS(ae),e:selE(ae),kb:(innerHeight<MAXIH-100||Date.now()-FOCT<1500)}:null;
+ try{relay2(p,box)}finally{if(keep&&keep.kb&&keep.el.isConnected!==false){try{keep.el.focus({preventScroll:true});keep.el.setSelectionRange(keep.s,keep.e)}catch(x){}}}}
 function relay2(p,box){
  ['display','flexDirection','justifyContent','alignContent','gridTemplateColumns','gridTemplateRows'].forEach(k=>box.style[k]='');
  box.innerHTML='';
@@ -369,7 +370,7 @@ function layGrid(p,box,L){let mr=0,mc=0;
   e.justifySelf=st.includes('e')&&st.includes('w')?'stretch':st.includes('w')?'start':st.includes('e')?'end':'center';
   e.alignSelf=st.includes('n')&&st.includes('s')?'stretch':st.includes('n')?'start':st.includes('s')?'end':'center';
   e.margin=py[0]+'px '+px[1]+'px '+py[1]+'px '+px[0]+'px';
-  if(/^(INPUT|TEXTAREA|SELECT)$/.test(w.el.tagName)){e.boxSizing='border-box';if(st.includes('e')&&st.includes('w'))e.width='100%';if(st.includes('n')&&st.includes('s'))e.height='100%'}
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(w.el.tagName)){e.boxSizing='border-box';if(st.includes('e')&&st.includes('w'))e.width='calc(100% - '+(px[0]+px[1])+'px)';if(st.includes('n')&&st.includes('s'))e.height='calc(100% - '+(py[0]+py[1])+'px)'}
   box.appendChild(w.el)})}
 function layPlace(box,L){box.style.position='relative';
  L.forEach(w=>{const o=w.mo,s=w.el.style;resetPlace(w);s.position='absolute';
@@ -602,7 +603,7 @@ function bindCat(w,cat){if(w.bc[cat])return;w.bc[cat]=1;
  else if(cat==='wheel')tgt.addEventListener('wheel',e=>send(base(e,{d:e.deltaY>0?-120:120})),{passive:true})}
 document.addEventListener('selectionchange',()=>{const a=document.activeElement,id=a&&a.__w;if(!id)return;const w=W[id];if(!w||w.in!==a)return;
  const s=selS(a),e=selE(a);if(w.cs===s&&w.ce===e)return;w.cs=s;w.ce=e;send({t:'cur',id:id,a:s,b:e})});
-document.addEventListener('focusin',e=>{const id=wid(e.target);if(id)send({t:'focus',id:id})});
+document.addEventListener('focusin',e=>{FOCT=Date.now();const id=wid(e.target);if(id)send({t:'focus',id:id})});
 
 /* ---- queries ---- */
 const MC=document.createElement('canvas');
