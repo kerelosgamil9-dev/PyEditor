@@ -62,8 +62,9 @@ def _parse_body(lines, i, node, parent_ind):
         if ind < base or ind < 0: break
         if ind > base: raise KVError("line %d: unexpected indentation" % ln)
         m = _KEY.match(txt)
-        if not m: raise KVError("line %d: cannot parse %r" % (ln, txt))
-        key, val = m.group(1), m.group(2)
+        if m: key, val = m.group(1), m.group(2)
+        elif re.fullmatch(r"[A-Z][\w.]*", txt): key, val = txt, ""      # bare class name (PushMatrix / PopMatrix ...), like Kivy
+        else: raise KVError("line %d: cannot parse %r" % (ln, txt))
         i += 1
         j = i
         while j < len(lines) and lines[j][0] > base: j += 1
@@ -93,6 +94,17 @@ def _directive(txt):
             try: _GLOBALS[name] = getattr(importlib.import_module(mod), attr)
             except Exception: _GLOBALS[name] = importlib.import_module(path)
         except Exception as e: print("KV #:import failed:", path, e)
+    elif p[0] == "include" and len(p) >= 2:
+        try:
+            import os
+            path = p[-1].strip()
+            try:
+                import kivy_more
+                path = kivy_more.resource_find(path) or path
+            except Exception: pass
+            if os.path.isfile(path): load_file(path)
+            else: print("KV #:include: file not found:", p[-1])
+        except Exception as e: print("KV #:include failed:", p[-1], e)
     elif p[0] == "set" and len(p) >= 3:
         try: _GLOBALS[p[1]] = eval(p[2], _base_globals())
         except Exception as e: print("KV #:set failed:", p[1], e)
@@ -127,8 +139,10 @@ def load_string(text, filename=None):
                 RULES.append((name, node, filename)); _BY.setdefault(name, []).append(node)
         else:
             m = _KEY.match(txt)
-            if not m or m.group(2): raise KVError("line %d: cannot parse %r" % (ln, txt))
-            node = Node(m.group(1), ln); i = _parse_body(lines, i + 1, node, 0); roots.append(node)
+            if m and not m.group(2): rname = m.group(1)
+            elif re.fullmatch(r"[A-Z][\w.]*", txt): rname = txt
+            else: raise KVError("line %d: cannot parse %r" % (ln, txt))
+            node = Node(rname, ln); i = _parse_body(lines, i + 1, node, 0); roots.append(node)
     last = None
     for r in roots: last = _build_root(r)
     LAST_ROOT[0] = last

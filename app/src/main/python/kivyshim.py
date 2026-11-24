@@ -1464,19 +1464,24 @@ def _install():
                                    FocusBehavior=U.FocusBehavior, CompoundSelectionBehavior=U.CompoundSelectionBehavior,
                                    DragBehavior=U.DragBehavior, CoverBehavior=U.CoverBehavior, TouchRippleBehavior=U.TouchRippleBehavior),
     })
-    for mod in ("kivy_gfx", "kivy_extra"):
+    for mod in ("kivy_gfx", "kivy_extra", "kivy_more"):
         try:
             M = __import__(mod)
             subs.update(M.MODULES)
         except ImportError: pass
+        except Exception as _e: print("[kivy] extra module %s could not load: %s" % (mod, _e))
     for name, attrs in subs.items():
         parent = name.rsplit(".", 1)[0]
         if parent not in sys.modules: _m(parent, True)
         m = _m(name, **attrs)
         setattr(sys.modules[parent], name.rsplit(".", 1)[1], m)
-    core = _m("kivy.core", True)
+    core = sys.modules.get("kivy.core") or _m("kivy.core", True)
     k.core = core
-    cw = _m("kivy.core.window", True, Window=Window)
+    try:
+        import kivy_more as _KM
+        _cwx = _KM.CORE_WINDOW
+    except ImportError: _cwx = {}
+    cw = _m("kivy.core.window", True, Window=Window, **_cwx)
     core.window = cw
     k.Logger = Logger
     k.kivy_data_dir = ""
