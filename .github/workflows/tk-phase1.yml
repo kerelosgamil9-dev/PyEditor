@@ -60,7 +60,7 @@ jobs:
             -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types \
             $INC cpython/Modules/_tkinter.c cpython/Modules/tkappinit.c \
             -o out/_tkinter.cpython-311.so \
-            -L$P/libs/arm64-v8a -ltcl -ltk $PYLIB -llog -lm -ldl 2>&1 | tee compile.log | tail -40
+            -L$P/libs/arm64-v8a -L$(dirname $PYLIB) -ltcl -ltk -lpython3.11 -llog -lm -ldl 2>&1 | tee compile.log | tail -40
           ls -la out/_tkinter.cpython-311.so
           echo "---- NEEDED ----"
           $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d out/_tkinter.cpython-311.so | grep NEEDED
@@ -81,6 +81,19 @@ jobs:
           cp -r cpython/Lib/tkinter out/python_lib/tkinter
           cp cpython/Lib/turtle.py out/python_lib/
           find chaquo -name "libpython3.11*.so" > out/chaquopy_libpython.txt
+          # sources needed to design the Android integration (phase 2)
+          O=$HOME/work/out/aw; mkdir -p $O/jni_src
+          cd $P
+          cp AndroidManifest.xml $O/ 2>/dev/null
+          cp -r src $O/java_src 2>/dev/null
+          cp -r jni/src/* $O/jni_src/ 2>/dev/null
+          cp -r jni/SDL2/android-project $O/sdl_android_project 2>/dev/null
+          cp jni/sdl2tk/Android.mk $O/sdl2tk_Android.mk; cp jni/SDL2/Android.mk $O/SDL2_Android.mk
+          cp jni/tcl/Android.mk $O/tcl_Android.mk; cp jni/Android.mk $O/top_Android.mk
+          ls jni/sdl2tk/sdl jni/sdl2tk > $O/sdl2tk_files.txt 2>&1
+          find . -name "*.java" | grep -iE "sdl|wish" | head -50 > $O/java_files.txt
+          cd $HOME/work
+          rm -rf out/python_lib/tkinter/test
           du -sh out/*; ls -la out
 
       - uses: actions/upload-artifact@v4
