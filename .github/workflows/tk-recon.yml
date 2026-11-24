@@ -7,66 +7,57 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Tool info
-        run: |
-          set +e
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-          ls "$ANDROID_HOME/ndk" 2>/dev/null
-          "$ANDROID_NDK_HOME/ndk-build" --version 2>&1 | head -3
-          which fossil ant make autoconf || true
-
-      - name: Download AndroWish source (fixed release c48f047f5b)
+      - name: Download AndroWish source (c48f047f5b)
         run: |
           set -x
           sudo apt-get update -qq
           sudo apt-get install -y -qq tcl bc zip file
           mkdir -p $HOME/work && cd $HOME/work
           curl -fSL -o src.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
-          ls -la src.tar.gz; file src.tar.gz
           echo "4ecbc23193cb00b9fc34c0942e2327f0b6badbe587ab574b492780994707683d  src.tar.gz" | sha256sum -c - || echo "CHECKSUM MISMATCH (continuing)"
           mkdir -p src && tar xzf src.tar.gz -C src
-          ls src
-          echo "androwish-c48f047f5b" > links.txt
+          P=$(cd src/androwish-c48f047f5b && pwd); echo "$P" > /tmp/projdir
 
-      - name: Recon (jni tree and module names)
+      - name: Show the Android.mk of the modules we need
         run: |
           set +e
-          cd $HOME/work/src
-          D=$(find . -maxdepth 2 -name jni -type d | head -1); D=$(cd "$(dirname "$D")" && pwd)
-          echo "PROJECT=$D"; echo "$D" > /tmp/projdir
-          cd "$D"
-          ls
-          echo "---- jni ----"; ls jni
-          echo "---- Application.mk ----"; cat jni/Application.mk
-          echo "---- modules (tcl / tk / sdl) ----"
-          grep -rhE '^\s*LOCAL_MODULE\s*:?=' jni --include=Android.mk | grep -iE 'tcl|tk|sdl|freetype|agg|png|jpeg|z\b' | sort -u | head -80
-          echo "---- python / tkinter hints ----"
-          grep -rl "tkinter" . 2>/dev/null | head
+          cd $(cat /tmp/projdir)
+          for m in tcl sdl2tk SDL2 freetype; do
+            echo "================ jni/$m/Android.mk"; cat jni/$m/Android.mk | head -150
+          done
+          echo "================ LOCAL_MODULE names"
+          grep -rhE '^\s*LOCAL_MODULE\s*:?=' jni/tcl/Android.mk jni/sdl2tk/Android.mk jni/SDL2/Android.mk jni/freetype/Android.mk
 
-      - name: Build native libs (arm64-v8a, keep going on errors)
+      - name: Build ONLY Tcl + Tk + SDL2 + FreeType (arm64-v8a)
         run: |
           set +e
           cd $(cat /tmp/projdir)
           export PATH="$ANDROID_NDK_HOME:$PATH"
-          ndk-build -k -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-24 2>&1 | tee $HOME/work/ndk-build.log | tail -n 60
+          CF="-Wno-error=incompatible-function-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=deprecated-non-prototype -Wno-error=macro-redefined"
+          ndk-build -k -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-24 \
+            APP_MODULES="tcl tk SDL2 freetype" \
+            APP_CFLAGS="$CF" APP_CPPFLAGS="$CF" 2>&1 | tee $HOME/work/ndk-build.log | tail -n 40
           echo "---- produced libs ----"
-          find libs -name '*.so' | sort | tee $HOME/work/libs.txt | head -100
-          echo "count: $(wc -l < $HOME/work/libs.txt)"
+          find libs obj -name '*.so' | sort | tee $HOME/work/libs.txt
           echo "---- errors ----"
-          grep -nE "error:|Error [0-9]|\*\*\* " $HOME/work/ndk-build.log | head -60
+          grep -nE "error:|Error [0-9]|\*\*\* |undefined|cannot find|not found" $HOME/work/ndk-build.log | head -60
 
       - name: Collect
         if: always()
         run: |
           set +e
-          cd $HOME/work
-          mkdir -p out
-          cp ndk-build.log libs.txt links.txt out/ 2>/dev/null
-          cp -r $(cat /tmp/projdir)/libs out/libs 2>/dev/null
-          cp $(cat /tmp/projdir)/jni/Application.mk out/ 2>/dev/null
-          (cd $(cat /tmp/projdir) && find jni -name Android.mk | sort) > out/android_mk_list.txt
-          ls -R out | head -50
+          cd $HOME/work; mkdir -p out
+          P=$(cat /tmp/projdir)
+          cp ndk-build.log libs.txt out/
+          mkdir -p out/libs && cp -r $P/libs/arm64-v8a out/libs/ 2>/dev/null
+          mkdir -p out/obj && find $P/obj/local/arm64-v8a -maxdepth 1 -name '*.so' -exec cp {} out/obj/ \;
+          # Tcl/Tk script libraries (init.tcl, tk.tcl, ...) and public headers
+          mkdir -p out/tcl_library out/tk_library out/include
+          cp -r $P/jni/tcl/library/* out/tcl_library/ 2>/dev/null
+          cp -r $P/jni/sdl2tk/library/* out/tk_library/ 2>/dev/null
+          cp $P/jni/tcl/generic/tcl*.h out/include/ 2>/dev/null
+          cp $P/jni/sdl2tk/generic/tk*.h out/include/ 2>/dev/null
+          du -sh out/*; ls out/obj out/libs/arm64-v8a 2>/dev/null
 
       - uses: actions/upload-artifact@v4
         if: always()
