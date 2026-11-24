@@ -9,13 +9,16 @@ import tkshim as tk
 import runner
 
 _MISSING = object()
+_CLEAR = "rgba(0,0,0,0)"        # widgets are transparent (the window color shows through, like in Kivy)
 _ALL = []                      # every realized widget (so a Window.clearcolor change can restyle them)
 _st = {"app": None, "clear": (0, 0, 0, 1)}
 
 
 def _reset():
+    kv = sys.modules.get("kvlang")
+    if kv is not None: kv.reset()
     del _ALL[:]
-    _st.update(app=None, clear=(0, 0, 0, 1))
+    _st.update(app=None, clear=(0, 0, 0, 1), host=None)
     Clock._ev = []
 
 
@@ -100,15 +103,44 @@ class ObjectProperty(Property):
     def __init__(self, defaultvalue=None, **kw): Property.__init__(self, defaultvalue, **kw)
 
 
+def _notifier(name):
+    def deco(f):
+        def g(self, *a, **k):
+            r = f(self, *a, **k)
+            o = self.__dict__.get("_owner")
+            if o is not None: o._changed(self.__dict__["_pname"], self)
+            return r
+        return g
+    return deco
+
+
+class _OList(list):
+    """list that notifies its owner property (so  widget.pos += [..]  / points.append(..) work like in Kivy)"""
+    def __init__(self, it=(), owner=None, pname=None):
+        list.__init__(self, it); self.__dict__["_owner"] = owner; self.__dict__["_pname"] = pname
+    for _n in ("append", "extend", "insert", "pop", "remove", "clear", "sort", "reverse", "__setitem__", "__delitem__", "__iadd__", "__imul__"):
+        locals()[_n] = _notifier(_n)(getattr(list, _n))
+    del _n
+
+
+class _ODict(dict):
+    def __init__(self, it=(), owner=None, pname=None):
+        dict.__init__(self, it); self.__dict__["_owner"] = owner; self.__dict__["_pname"] = pname
+    for _n in ("update", "pop", "popitem", "clear", "setdefault", "__setitem__", "__delitem__"):
+        locals()[_n] = _notifier(_n)(getattr(dict, _n))
+    del _n
+
+
 class ListProperty(Property):
     def __init__(self, defaultvalue=None, **kw): Property.__init__(self, defaultvalue or [], **kw)
-    def _default(self, inst): return list(self.default)
-    def _conv(self, inst, v): return list(v) if isinstance(v, (list, tuple)) else v
+    def _default(self, inst): return _OList(self.default, inst, self.name)
+    def _conv(self, inst, v): return _OList(v, inst, self.name) if isinstance(v, (list, tuple)) else v
 
 
 class DictProperty(Property):
     def __init__(self, defaultvalue=None, **kw): Property.__init__(self, defaultvalue or {}, **kw)
-    def _default(self, inst): return dict(self.default)
+    def _default(self, inst): return _ODict(self.default, inst, self.name)
+    def _conv(self, inst, v): return _ODict(v, inst, self.name) if isinstance(v, dict) else v
 
 
 class OptionProperty(Property):
@@ -133,22 +165,64 @@ class ReferenceListProperty(Property):
         for p, x in zip(self.parts, list(v)): p.__set__(inst, x)
 
 
+class _Factory:
+    """Factory.Label() / Factory.get('Label') / Factory.register(...). All widget classes register themselves."""
+    _classes = {}
+    def register(self, name, cls=None, **k):
+        if cls is not None: self._classes[name] = cls
+    def get(self, name):
+        try: return self._classes[name]
+        except KeyError: raise KeyError("Unknown class <%s> (Factory)" % name)
+    def unregister(self, name): self._classes.pop(name, None)
+    def __getattr__(self, name):
+        try: return self._classes[name]
+        except KeyError: raise AttributeError(name)
+
+
+Factory = _Factory()
+
+
 class EventDispatcher:
     __events__ = ()
+    _DERIVED = {}
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        if not cls.__name__.startswith("_"): Factory._classes[cls.__name__] = cls
 
     def __init__(self, **kw):
         self.__dict__.setdefault("_obs", {})
+        self._apply_kw(kw)
+
+    def _apply_kw(self, kw):
+        ev = type(self)._all_events()
         for k, v in kw.items():
-            if isinstance(getattr(type(self), k, None), Property) or hasattr(type(self), k) or k.startswith("on_") or k in ("id",):
+            attr = getattr(type(self), k, None)
+            if callable(v) and k.startswith("on_") and not isinstance(attr, Property):
+                if k in ev or attr is None or not isinstance(attr, Property):
+                    if k in ev or k.startswith("on_touch"): self.bind(**{k: v}); continue
+                    if isinstance(getattr(type(self), k[3:], None), Property): self.bind(**{k[3:]: v}); continue
+            if isinstance(attr, Property) or attr is not None or k == "id":
                 try: setattr(self, k, v)
                 except AttributeError: pass
 
-    def _changed(self, name, value):
+    def setter(self, name): return lambda inst, v: setattr(self, name, v)
+    def getter(self, name): return lambda inst: getattr(self, name)
+    def get_property_observers(self, name): return list(self.__dict__.get("_obs", {}).get(name, []))
+    def properties(self): return {k: v for c in type(self).__mro__ for k, v in vars(c).items() if isinstance(v, Property)}
+
+    def _notify(self, name, value):
         for cb in list(self.__dict__.get("_obs", {}).get(name, [])):
             tk._cb(cb, self, value)
         h = getattr(self, "on_" + name, None)
         if callable(h) and ("on_" + name) not in type(self)._all_events():
             tk._cb(h, self, value)
+
+    def _changed(self, name, value):
+        self._notify(name, value)
+        for d in type(self)._DERIVED.get(name, ()):
+            try: self._notify(d, getattr(self, d))
+            except Exception: pass
         self._prop_changed(name, value)
 
     def _prop_changed(self, name, value): pass
@@ -191,6 +265,12 @@ class EventDispatcher:
 # =====================================================================
 #                           widgets
 # =====================================================================
+class _Ids(dict):
+    def __getattr__(self, k):
+        try: return self[k]
+        except KeyError: raise AttributeError(k)
+
+
 class Widget(EventDispatcher):
     x = NumericProperty(0); y = NumericProperty(0)
     width = NumericProperty(100); height = NumericProperty(100)
@@ -202,12 +282,23 @@ class Widget(EventDispatcher):
     size = ReferenceListProperty(width, height)
     parent = ObjectProperty(None)
     _LAYOUT = ("size_hint_x", "size_hint_y", "width", "height", "pos_hint", "x", "y")
+    _DERIVED = {"x": ("pos", "center_x", "right", "center"), "y": ("pos", "center_y", "top", "center"),
+                "width": ("size", "center_x", "right", "center"), "height": ("size", "center_y", "top", "center")}
 
     def __init__(self, **kw):
-        self.__dict__["_kids"] = []; self.__dict__["_w"] = None
-        sh = kw.pop("size_hint", None)
-        if sh is not None: self.size_hint_x, self.size_hint_y = sh
-        EventDispatcher.__init__(self, **kw)
+        d = self.__dict__
+        d["_kids"] = []; d["_w"] = None; d["ids"] = _Ids(); d["_in_sync"] = False; d["_th"] = False
+        EventDispatcher.__init__(self)
+        Builder.apply(self)               # KV class rules first, then the keyword arguments win
+        self._apply_kw(kw)
+
+    @property
+    def canvas(self):
+        c = self.__dict__.get("_canvas")
+        if c is None:
+            import kivy_gfx
+            c = self.__dict__["_canvas"] = kivy_gfx.Canvas(self)
+        return c
 
     # -- size_hint as a pair (a ReferenceListProperty that allows None)
     @property
@@ -217,14 +308,11 @@ class Widget(EventDispatcher):
 
     @property
     def children(self): return self._kids[::-1]
-    @property
-    def center_x(self): return self.x + self.width / 2.0
-    @property
-    def center_y(self): return self.y + self.height / 2.0
-    @property
-    def right(self): return self.x + self.width
-    @property
-    def top(self): return self.y + self.height
+    center_x = AliasProperty(lambda s: s.x + s.width / 2.0, lambda s, v: setattr(s, "x", v - s.width / 2.0))
+    center_y = AliasProperty(lambda s: s.y + s.height / 2.0, lambda s, v: setattr(s, "y", v - s.height / 2.0))
+    right = AliasProperty(lambda s: s.x + s.width, lambda s, v: setattr(s, "x", v - s.width))
+    top = AliasProperty(lambda s: s.y + s.height, lambda s, v: setattr(s, "y", v - s.height))
+    center = AliasProperty(lambda s: [s.center_x, s.center_y], lambda s, v: (setattr(s, "center_x", v[0]), setattr(s, "center_y", v[1])))
 
     # -- tree
     def add_widget(self, w, index=0, **k):
@@ -253,29 +341,129 @@ class Widget(EventDispatcher):
     def collide_point(self, x, y): return self.x <= x <= self.right and self.y <= y <= self.top
 
     # -- realization (create the tk widgets)
-    def _make(self, master): return tk.Frame(master, bg=_hex(_st["clear"]), bd=0, highlightthickness=0)
+    def _make(self, master): return tk.Frame(master, bg=_CLEAR, bd=0, highlightthickness=0)
     def _cfg(self): return {}
 
+    @property
+    def _el(self): return self.__dict__.get("_outer") or self._w
+
+    def _wants_canvas_layer(self):
+        if type(self)._make is not Widget._make: return False
+        c = self.__dict__.get("_canvas")
+        if c is not None and not c.empty(): return True
+        cls = type(self)           # drawing widgets usually override the touch handlers: give them a canvas up front
+        return cls.on_touch_down is not Widget.on_touch_down or cls.on_touch_move is not Widget.on_touch_move
+
     def _realize(self, master):
-        self._w = self._make(master); _ALL.append(self)
+        d = self.__dict__
+        d["_master"] = master
+        if self._wants_canvas_layer():
+            outer = tk.Frame(master, bg=_CLEAR, bd=0, highlightthickness=0)
+            cv = tk.Canvas(outer, bg=_CLEAR, highlightthickness=0, bd=0)
+            cv.place(relx=0, rely=0, relwidth=1, relheight=1)
+            inner = tk.Frame(outer, bg="rgba(0,0,0,0)", bd=0, highlightthickness=0)
+            inner.place(relx=0, rely=0, relwidth=1, relheight=1)
+            d["_outer"] = outer; d["_cv"] = cv; self._w = inner
+        else:
+            d["_outer"] = None; d["_cv"] = None
+            self._w = self._make(master)
+        _ALL.append(self)
         self._built()
-        for c in self._kids: c._realize(self._w)
+        self._hook_events()
+        self._realize_kids()
         self._relayout()
+        self._canvas_ready()
+
+    def _realize_kids(self):
+        for c in self._kids: c._realize(self._w)
+
+    # real size from the page (Kivy widgets always know their size)
+    def _hook_events(self):
+        w = self._el
+        w.bind("<Configure>", self._on_configure)
+        cls = type(self)
+        if (cls.on_touch_down is not Widget.on_touch_down or cls.on_touch_move is not Widget.on_touch_move
+                or cls.on_touch_up is not Widget.on_touch_up
+                or any(self.__dict__.get("_obs", {}).get(n) for n in ("on_touch_down", "on_touch_move", "on_touch_up"))):
+            self._hook_touch()
+
+    def _on_configure(self, e):
+        wd, ht = int(e.width or 0), int(e.height or 0)
+        if wd <= 0 or ht <= 0: return
+        self.__dict__["_in_sync"] = True
+        try:
+            if self.width != wd: self.width = wd
+            if self.height != ht: self.height = ht
+        finally: self.__dict__["_in_sync"] = False
+        self._after_size()
+
+    def _after_size(self):
+        d = self.__dict__
+        if self._kids and type(self)._relayout is Widget._relayout and d.get("_ls") != (self.width, self.height):
+            d["_ls"] = (self.width, self.height); self._relayout()      # pixel positions depend on the size
+        self._canvas_redraw()
+
+    def _canvas_ready(self): self._canvas_redraw()
+    def _canvas_redraw(self):
+        c = self.__dict__.get("_canvas")
+        if c is None or c.empty(): return
+        if self._w is not None and type(self)._make is not Widget._make:
+            self._restyle_self()                       # Label/Button...: canvas background -> background color
+        elif self.__dict__.get("_cv") is None:
+            self._rebuild()
+        else: c._draw()
+
+    def _canvas_bg(self):
+        c = self.__dict__.get("_canvas")
+        return c.background_color() if c is not None else None
+
+    # touch (mouse) events -> on_touch_down / on_touch_move / on_touch_up
+    def _hook_touch(self):
+        d = self.__dict__
+        if d.get("_th") or self._w is None: return
+        d["_th"] = True
+        w = self._el
+        try: w.config(pvtouch=1)
+        except Exception: pass
+        w.bind("<ButtonPress-1>", lambda e: self._touch("on_touch_down", e), add="+")
+        w.bind("<B1-Motion>", lambda e: self._touch("on_touch_move", e), add="+")
+        w.bind("<ButtonRelease-1>", lambda e: self._touch("on_touch_up", e), add="+")
+
+    def _touch(self, name, e):
+        self.dispatch(name, _mk_touch(self, e, name))
+
+    def bind(self, **kw):
+        EventDispatcher.bind(self, **kw)
+        if self._w is not None and any(k.startswith("on_touch") for k in kw): self._hook_touch()
+
+    def on_touch_down(self, touch): return False
+    def on_touch_move(self, touch): return False
+    def on_touch_up(self, touch): return False
 
     def _built(self): pass
 
     def _unrealize(self):
-        w = self._w; self._w = None
-        if self in _ALL: _ALL.remove(self)
-        for c in self._kids: c._unrealize_only()
-        if w is not None:
-            try: w.destroy()
+        el = self._el
+        self._unrealize_only(False)
+        if el is not None:
+            try: el.destroy()
             except Exception: pass
 
-    def _unrealize_only(self):
-        self._w = None
+    def _unrealize_only(self, kids=True):
+        d = self.__dict__
+        self._w = None; d["_outer"] = None; d["_cv"] = None; d["_th"] = False
         if self in _ALL: _ALL.remove(self)
         for c in self._kids: c._unrealize_only()
+
+    def _rebuild(self):
+        """Re-create the tk widgets (needed when a canvas layer becomes necessary)."""
+        d = self.__dict__
+        m = d.get("_master")
+        if self._w is None or m is None: return
+        p = self.parent
+        self._unrealize(); self._realize(m)
+        if p is not None and p._w is not None: p._relayout()
+        elif m is _st.get("host"): self._el.grid(row=0, column=0, sticky="nsew")
 
     def _restyle(self):
         if self._w is not None:
@@ -285,7 +473,7 @@ class Widget(EventDispatcher):
 
     def _prop_changed(self, name, value):
         if self._w is None: return
-        if name in self._LAYOUT:
+        if name in self._LAYOUT and not self.__dict__.get("_in_sync"):
             p = self.parent
             if p is not None and p._w is not None: p._relayout()
             if name in ("width", "height"): return
@@ -302,11 +490,11 @@ class Widget(EventDispatcher):
         if self._w is None: return
         for c in self._kids:
             if c._w is None: continue
-            c._w.place(**_place_args(c))
+            c._el.place(**_place_args(c, self))
 
 
-def _place_args(c):
-    """FloatLayout style placement from size_hint / pos_hint."""
+def _place_args(c, parent=None):
+    """FloatLayout style placement from size_hint / pos_hint (or the pixel pos when there is no pos_hint)."""
     ph = c.pos_hint or {}
     shx, shy = c.size_hint_x, c.size_hint_y
     a = {}
@@ -314,8 +502,9 @@ def _place_args(c):
     else: a["width"] = max(1, int(c.width))
     if shy is not None: a["relheight"] = float(shy)
     else: a["height"] = max(1, int(c.height))
-    w = float(shx) if shx is not None else 0.0
-    h = float(shy) if shy is not None else 0.0
+    if not ph and (c.x or c.y) and parent is not None and parent.height:
+        a["x"] = int(c.x); a["y"] = int(parent.height - c.y - c.height); a["anchor"] = "nw"
+        return a
     hv, vv = "w", "s"                      # default: bottom-left
     if "center_x" in ph: rx, hv = ph["center_x"], ""
     elif "right" in ph: rx, hv = ph["right"], "e"
@@ -336,10 +525,18 @@ class FloatLayout(Widget): pass
 class Layout(Widget):
     padding = Property([0])
     spacing = Property(0)
-    _LAYOUT = Widget._LAYOUT + ()
+    minimum_width = NumericProperty(0)
+    minimum_height = NumericProperty(0)
+    minimum_size = ReferenceListProperty(minimum_width, minimum_height)
+    _DERIVED = dict(Widget._DERIVED, minimum_width=("minimum_size",), minimum_height=("minimum_size",))
+    _RELAY = ("padding", "spacing", "orientation", "cols", "rows", "row_default_height", "col_default_width",
+              "row_force_default", "col_force_default", "anchor_x", "anchor_y")
+
+    def do_layout(self, *a): self._relayout()
+    def layout_hint_with_bounds(self, *a, **k): pass
 
     def _prop_changed(self, name, value):
-        if name in ("padding", "spacing", "orientation", "cols", "rows") and self._w is not None: self._relayout()
+        if name in self._RELAY and self._w is not None: self._relayout()
         else: Widget._prop_changed(self, name, value)
 
 
@@ -358,16 +555,48 @@ class BoxLayout(Layout):
             if vert:
                 kw = dict(row=i, column=0, sticky="nsew", padx=(pl, pr), pady=(pt if first else sp, pb if last else 0))
                 self._w.rowconfigure(i, **_track(c.size_hint_y, c.height))
+                cross = c.size_hint_x is None
+                if cross: kw["sticky"] = _cross_sticky(c, True)
+                _fix_size(c, "pvw", c.width if cross else None)
             else:
                 kw = dict(row=0, column=i, sticky="nsew", padx=(pl if first else sp, pr if last else 0), pady=(pt, pb))
                 self._w.columnconfigure(i, **_track(c.size_hint_x, c.width))
-            c._w.grid(**kw)
+                cross = c.size_hint_y is None
+                if cross: kw["sticky"] = _cross_sticky(c, False)
+                _fix_size(c, "pvh", c.height if cross else None)
+            c._el.grid(**kw)
         old = self.__dict__.get("_n", 0)
         for i in range(n, old):                      # clear leftover tracks of removed children
             (self._w.rowconfigure if vert else self._w.columnconfigure)(i, weight=0, minsize=0)
         if vert: self._w.columnconfigure(0, weight=1)
         else: self._w.rowconfigure(0, weight=1)
         self.__dict__["_n"] = n
+        # minimum size (used with ScrollView: height: self.minimum_height)
+        if vert:
+            mh = pt + pb + sp * max(0, n - 1) + sum((c.height or 0) for c in kids if c.size_hint_y is None)
+            mw = pl + pr + max([c.width for c in kids if c.size_hint_x is None] or [0])
+        else:
+            mw = pl + pr + sp * max(0, n - 1) + sum((c.width or 0) for c in kids if c.size_hint_x is None)
+            mh = pt + pb + max([c.height for c in kids if c.size_hint_y is None] or [0])
+        self.minimum_width, self.minimum_height = mw, mh
+
+
+def _cross_sticky(c, vert):
+    ph = c.pos_hint or {}
+    if vert:      # fixed width inside a vertical box: left / center / right, stretch in height
+        return "nsw" if "x" in ph else ("nse" if "right" in ph else "ns")
+    return "wne" if "top" in ph else ("wse" if "y" in ph else "we")
+
+
+def _fix_size(c, opt, v):
+    el = c._el
+    if el is None: return
+    key = "_fx_" + opt
+    val = int(v) if v else 0
+    if c.__dict__.get(key) == val: return
+    c.__dict__[key] = val
+    try: el.config(**{opt: val})
+    except Exception: pass
 
 
 def _track(hint, size):
@@ -378,6 +607,10 @@ def _track(hint, size):
 class GridLayout(Layout):
     cols = NumericProperty(None)
     rows = NumericProperty(None)
+    row_default_height = NumericProperty(0)
+    col_default_width = NumericProperty(0)
+    row_force_default = BooleanProperty(False)
+    col_force_default = BooleanProperty(False)
 
     def _relayout(self):
         if self._w is None: return
@@ -391,29 +624,41 @@ class GridLayout(Layout):
         pl, pt, pr, pb = _pad4(self.padding)
         sp = self.spacing
         spx, spy = (sp[0], sp[1]) if isinstance(sp, (list, tuple)) and len(sp) > 1 else ((sp[0] if isinstance(sp, (list, tuple)) and sp else sp) or 0,) * 2
+        rdh, cdw = float(self.row_default_height or 0), float(self.col_default_width or 0)
+        rfd, cfd = bool(self.row_force_default), bool(self.col_force_default)
         ch = {}; rh = {}
         for i, c in enumerate(kids):
             r, col = divmod(i, cols)
             kw = dict(row=r, column=col, sticky="nsew",
                       padx=(pl if col == 0 else spx, pr if col == cols - 1 else 0),
                       pady=(pt if r == 0 else spy, pb if r == nrows - 1 else 0))
-            c._w.grid(**kw)
+            c._el.grid(**kw)
             ch.setdefault(col, []).append(c); rh.setdefault(r, []).append(c)
+        colw, rowh = {}, {}
         for col, cs in ch.items():
             fixed = [x for x in cs if x.size_hint_x is None]
-            if fixed: self._w.columnconfigure(col, weight=0, minsize=int(max(x.width for x in fixed)))
-            else: self._w.columnconfigure(col, weight=max(1, int(min(float(x.size_hint_x) for x in cs) * 1000)), minsize=0)
+            if cfd and cdw: self._w.columnconfigure(col, weight=0, minsize=int(cdw)); colw[col] = cdw
+            elif fixed: m = max(x.width for x in fixed); self._w.columnconfigure(col, weight=0, minsize=int(m)); colw[col] = m
+            else:
+                self._w.columnconfigure(col, weight=max(1, int(min(float(x.size_hint_x) for x in cs) * 1000)), minsize=int(cdw))
+                colw[col] = cdw
         for r, cs in rh.items():
             fixed = [x for x in cs if x.size_hint_y is None]
-            if fixed: self._w.rowconfigure(r, weight=0, minsize=int(max(x.height for x in fixed)))
-            else: self._w.rowconfigure(r, weight=max(1, int(min(float(x.size_hint_y) for x in cs) * 1000)), minsize=0)
+            if rfd and rdh: self._w.rowconfigure(r, weight=0, minsize=int(rdh)); rowh[r] = rdh
+            elif fixed: m = max(x.height for x in fixed); self._w.rowconfigure(r, weight=0, minsize=int(m)); rowh[r] = m
+            else:
+                self._w.rowconfigure(r, weight=max(1, int(min(float(x.size_hint_y) for x in cs) * 1000)), minsize=int(rdh))
+                rowh[r] = rdh
         oc, orr = self.__dict__.get("_nc", 0), self.__dict__.get("_nr", 0)
         for i in range(cols, oc): self._w.columnconfigure(i, weight=0, minsize=0)
         for i in range(nrows, orr): self._w.rowconfigure(i, weight=0, minsize=0)
         self.__dict__["_nc"], self.__dict__["_nr"] = cols, nrows
+        self.minimum_width = pl + pr + spx * max(0, len(colw) - 1) + sum(colw.values())
+        self.minimum_height = pt + pb + spy * max(0, len(rowh) - 1) + sum(rowh.values())
 
 
 class Label(Widget):
+    _DERIVED = dict(Widget._DERIVED, text=("texture_size",), font_size=("texture_size",))
     text = StringProperty("")
     font_size = NumericProperty(15)
     color = ListProperty([1, 1, 1, 1])
@@ -431,7 +676,17 @@ class Label(Widget):
         st = " ".join(x for x, on in (("bold", self.bold), ("italic", self.italic)) if on)
         return (self.font_name if self.font_name != "Roboto" else "Roboto", -int(self.font_size or 15)) + ((st,) if st else ())
 
-    def _bgc(self): return _hex(_st["clear"])
+    def _bgc(self): return self._canvas_bg() or _CLEAR
+
+    texture_size = AliasProperty(lambda s: [max(1.0, len(s.text or "") * (s.font_size or 15) * .55), (s.font_size or 15) * 1.35], None)
+
+    def _shown(self):
+        t = self.text
+        if self.markup and "[" in t:
+            import re
+            t = re.sub(r"\[/?(?:b|i|u|s|sub|sup|font|size|color|ref|anchor|font_family|font_context|text_context|kerning)(?:=[^\]]*)?\]", "", t)
+            t = t.replace("&bl;", "[").replace("&br;", "]").replace("&amp;", "&")
+        return t
 
     def _cfg(self):
         h = str(self.halign)
@@ -439,7 +694,7 @@ class Label(Widget):
         va = str(self.valign)
         if va == "top": an = ("n" if an == "c" else "n" + an)
         elif va == "bottom": an = ("s" if an == "c" else "s" + an)
-        c = {"text": self.text, "fg": _hex(self.color), "bg": self._bgc(), "font": self._font(),
+        c = {"text": self._shown(), "fg": _hex(self.color), "bg": self._bgc(), "font": self._font(),
              "anchor": an, "justify": {"left": "left", "right": "right"}.get(h, "center")}
         ts = self.text_size
         if ts and ts[0]: c["wraplength"] = int(ts[0])
@@ -458,7 +713,7 @@ class Button(Label):
 
     def _bgc(self):
         if self.background_normal == "": return _hex(self.background_color)      # no image: the exact color
-        return _mix(self.background_color, .3)
+        return self._canvas_bg() or _mix(self.background_color, .3)
 
     def _cfg(self):
         c = Label._cfg(self)
@@ -482,10 +737,25 @@ class Button(Label):
     def trigger_action(self, duration=0.1): self._press()
 
 
+_GROUPS = {}
+
+
+def _group_add(g, w):
+    L = _GROUPS.setdefault(g, [])
+    if w not in L: L.append(w)
+
+
 class ToggleButton(Button):
     group = Property(None)
     def _press(self):
-        self.state = "normal" if self.state == "down" else "down"
+        if self.group is not None:
+            _group_add(self.group, self)
+            if self.state == "down": self.dispatch("on_press"); self.dispatch("on_release"); return     # radio: cannot untoggle
+            for o in _GROUPS[self.group]:
+                if o is not self and o.state == "down": o.state = "normal"
+            self.state = "down"
+        else:
+            self.state = "normal" if self.state == "down" else "down"
         self.dispatch("on_press"); self.dispatch("on_release")
     def _bgc(self): return _mix(self.background_color, .18 if self.state == "down" else .3)
 
@@ -525,20 +795,49 @@ class TextInput(Widget):
         return w
 
     def _built(self):
+        w = self._w
+        w.bind("<FocusIn>", lambda e: self._focus_changed(True), add="+")
+        w.bind("<FocusOut>", lambda e: self._focus_changed(False), add="+")
+        self.__dict__["_hint_on"] = False
+        self._show_hint()
         if self.focus: self._w.focus_set()
+
+    def _show_hint(self):
+        """emulate hint_text: gray text shown while the field is empty and unfocused"""
+        if self._w is None or not self.hint_text: return
+        if self.text == "" and not self.__dict__.get("_focused"):
+            self.__dict__["_hint_on"] = True; self._lock = True
+            try:
+                if self.multiline: self._w.delete("1.0", "end"); self._w.insert("1.0", self.hint_text)
+                else: self._var.set(self.hint_text)
+                self._w.config(fg="#999999")
+            finally: self._lock = False
+
+    def _focus_changed(self, on):
+        self.__dict__["_focused"] = on
+        if on and self.__dict__.get("_hint_on"):
+            self.__dict__["_hint_on"] = False; self._lock = True
+            try:
+                if self.multiline: self._w.delete("1.0", "end")
+                else: self._var.set("")
+                self._w.config(fg=_hex(self.foreground_color))
+            finally: self._lock = False
+        elif not on: self._show_hint()
+        if self.focus != on: self.focus = on
 
     def _get_widget_text(self):
         if self.multiline: return self._w.get("1.0", "end-1c")
         return self._var.get()
 
     def _from_widget(self):
-        if self._w is None or self._lock: return
+        if self._w is None or self._lock or self.__dict__.get("_hint_on"): return
         self._lock = True
         try: self.text = self._get_widget_text()
         finally: self._lock = False
 
     def _prop_changed(self, name, value):
         if self._w is not None and name == "text" and not self._lock:
+            self.__dict__["_hint_on"] = False
             self._lock = True
             try:
                 if self.multiline:
@@ -547,7 +846,7 @@ class TextInput(Widget):
                     self._var.set(value)
             finally: self._lock = False
         elif self._w is not None and name == "focus":
-            if value: self._w.focus_set()
+            if value and not self.__dict__.get("_focused"): self._w.focus_set()
         else: Widget._prop_changed(self, name, value)
 
     def on_text_validate(self, *a): pass
@@ -561,7 +860,7 @@ class CheckBox(Widget):
     color = ListProperty([1, 1, 1, 1])
     size_hint_x = NumericProperty(1)
 
-    def _cfg(self): return {"bg": _hex(_st["clear"]), "activebackground": _hex(_st["clear"]), "text": ""}
+    def _cfg(self): return {"bg": _CLEAR, "activebackground": _CLEAR, "text": ""}
 
     def _make(self, master):
         self._var = tk.IntVar(value=1 if self.active else 0); self._lock = False
@@ -576,6 +875,10 @@ class CheckBox(Widget):
         finally: self._lock = False
 
     def _prop_changed(self, name, value):
+        if name == "active" and value and self.group is not None:
+            _group_add(self.group, self)
+            for o in _GROUPS[self.group]:
+                if o is not self and o.active: o.active = False
         if name == "active" and self._w is not None:
             if not self._lock:
                 self._lock = True
@@ -592,7 +895,7 @@ class Slider(Widget):
     value = NumericProperty(0); step = NumericProperty(0)
     orientation = Property("horizontal")
 
-    def _cfg(self): return {"bg": _hex(_st["clear"]), "highlightthickness": 0}
+    def _cfg(self): return {"bg": _CLEAR, "highlightthickness": 0}
 
     def _make(self, master):
         self._lock = False
@@ -632,6 +935,40 @@ class ProgressBar(Widget):
         else: Widget._prop_changed(self, name, value)
 
 
+class Touch:
+    def __init__(self):
+        self.x = self.y = self.ox = self.oy = 0.0; self.dx = self.dy = 0.0; self.pos = (0.0, 0.0)
+        self.ud = {}; self.is_mouse_scrolling = False; self.button = "left"; self.is_touch = True
+        self.is_double_tap = False; self.is_triple_tap = False; self.profile = ["pos"]; self.uid = id(self)
+        self.grab_current = None; self.time_start = time.time()
+    def grab(self, w, exclusive=False): self.grab_current = w
+    def ungrab(self, w): self.grab_current = None
+    def push(self, *a): pass
+    def pop(self, *a): pass
+    def apply_transform_2d(self, f): return self
+    def scale_for_screen(self, *a, **k): pass
+    @property
+    def sx(self): return self.x / float(max(1, tk._st["w"]))
+    @property
+    def sy(self): return self.y / float(max(1, tk._st["h"]))
+    @property
+    def spos(self): return (self.sx, self.sy)
+
+
+def _mk_touch(widget, e, name):
+    d = widget.__dict__
+    h = float(widget.height or 0) or float(getattr(e, "height", 0) or 0)
+    x, y = float(widget.x) + float(e.x), float(widget.y) + h - float(e.y)
+    t = d.get("_tobj")
+    if name == "on_touch_down" or t is None:
+        t = d["_tobj"] = Touch(); t.ox, t.oy = x, y
+    else:
+        t.dx, t.dy = x - t.x, y - t.y
+    t.x, t.y = x, y; t.pos = (x, y)
+    if name == "on_touch_up": d["_tobj"] = None
+    return t
+
+
 # =====================================================================
 #                               App
 # =====================================================================
@@ -648,6 +985,27 @@ class App(EventDispatcher):
 
     @classmethod
     def get_running_app(cls): return _st["app"]
+
+    def _load_kv(self):
+        """Kivy loads <appname>.kv (class name without 'App', lowercased) or kv_file automatically."""
+        import os
+        names = []
+        if self.kv_file: names.append(self.kv_file)
+        base = type(self).__name__
+        if base.endswith("App"): base = base[:-3]
+        names.append(base.lower() + ".kv")
+        dirs = [os.getcwd()]
+        try:
+            import runner
+            sd = os.path.dirname(os.path.abspath(runner._SRC.get("path", ""))) if hasattr(runner, "_SRC") else ""
+            if sd: dirs.append(sd)
+        except Exception: pass
+        for d in dirs:
+            for n in names:
+                p = n if os.path.isabs(n) else os.path.join(d, n)
+                if os.path.isfile(p):
+                    return Builder.load_file(p)
+        return None
 
     def build(self): return None
     def build_config(self, config): pass
@@ -671,15 +1029,22 @@ class App(EventDispatcher):
 
     def run(self):
         _st["app"] = self
+        kvroot = self._load_kv()
         r = self.build()
+        if r is None: r = kvroot
         if r is not None: self.root = r
         if self.root is None:
             raise RuntimeError("build() must return a widget / لازم دالة build ترجّع ودجت")
         t = tk._st["root"] or tk.Tk()
         t.title(self.title)
         t.configure(bg=_hex(_st["clear"]))
-        t.rowconfigure(0, weight=1); t.columnconfigure(0, weight=1)
-        self.root._realize(t)
+        # the app lives in a "host" frame placed over the whole window, so overlays (Popup...) can be placed beside it
+        host = tk.Frame(t, bg=_hex(_st["clear"]), bd=0, highlightthickness=0)
+        host.place(relx=0, rely=0, relwidth=1, relheight=1)
+        host.rowconfigure(0, weight=1); host.columnconfigure(0, weight=1)
+        _st["host"] = host
+        Window._hook_keys()
+        self.root._realize(host)
         self.root._w.grid(row=0, column=0, sticky="nsew")
         tk._cb(self.on_start)
         tk._mainloop()
@@ -769,6 +1134,7 @@ class _Win(EventDispatcher):
             _st["clear"] = tuple(value)
             r = tk._st.get("root")
             if r is not None: r.configure(bg=_hex(value))
+            if _st.get("host") is not None: _st["host"].configure(bg=_hex(value))
             for w in list(_ALL):
                 if w._w is None: continue
                 try:
@@ -784,6 +1150,25 @@ class _Win(EventDispatcher):
     def height(self): return tk._st["h"]
     def add_widget(self, w, *a):
         if _st["app"]: _st["app"].root.add_widget(w)
+    def _hook_keys(self):
+        r = tk._st.get("root")
+        if r is None or self.__dict__.get("_kb"): return
+        if not any(self.__dict__.get("_obs", {}).get(n) for n in ("on_key_down", "on_key_up", "on_keyboard")): return
+        self.__dict__["_kb"] = True
+        r.bind("<KeyPress>", lambda e: self._key(e, True))
+        r.bind("<KeyRelease>", lambda e: self._key(e, False))
+    def _key(self, e, down):
+        names = {"Return": 13, "Escape": 27, "BackSpace": 8, "Tab": 9, "space": 32, "Left": 276, "Right": 275, "Up": 273, "Down": 274, "Delete": 127}
+        ks = getattr(e, "keysym", "") or ""
+        code = names.get(ks, ord(ks.lower()) if len(ks) == 1 else 0)
+        cp = getattr(e, "char", "") or ""
+        if down:
+            self.dispatch("on_key_down", code, code, cp, [])
+            self.dispatch("on_keyboard", code, code, cp, [])
+        else: self.dispatch("on_key_up", code, code)
+    def bind(self, **kw):
+        EventDispatcher.bind(self, **kw)
+        self._hook_keys()
     def close(self): tk._st["quit"] = True
     def request_keyboard(self, *a, **k): return None
     def release_all_keyboards(self): pass
@@ -807,11 +1192,15 @@ Config = _Cfg()
 
 
 class _Builder:
-    def load_string(self, s, **k):
-        raise NotImplementedError("لغة KV لسه مش مدعومة هنا - اكتب الواجهة بكود بايثون.\n"
-                                  "KV language is not supported yet - build the UI in Python code.")
-    load_file = load_string
-    def unload_file(self, *a): pass
+    def _kv(self):
+        import kvlang
+        return kvlang
+    def load_string(self, s, **k): return self._kv().load_string(s, **k)
+    def load_file(self, f, **k): return self._kv().load_file(f, **k)
+    def unload_file(self, f): return self._kv().unload_file(f)
+    def apply(self, widget):
+        kv = sys.modules.get("kvlang")
+        if kv is not None and kv.RULES: kv.apply_rules(widget)
 
 
 Builder = _Builder()
@@ -884,9 +1273,41 @@ def _install():
         "kivy.uix.slider": dict(Slider=Slider),
         "kivy.uix.progressbar": dict(ProgressBar=ProgressBar),
     }
+    import kivy_ui as U
+    subs.update({
+        "kivy.factory": dict(Factory=Factory),
+        "kivy.uix.scrollview": dict(ScrollView=U.ScrollView),
+        "kivy.uix.anchorlayout": dict(AnchorLayout=U.AnchorLayout),
+        "kivy.uix.stacklayout": dict(StackLayout=U.StackLayout),
+        "kivy.uix.relativelayout": dict(RelativeLayout=U.RelativeLayout),
+        "kivy.uix.screenmanager": dict(Screen=U.Screen, ScreenManager=U.ScreenManager, ScreenManagerException=U.ScreenManagerException,
+                                       NoTransition=U.NoTransition, SlideTransition=U.SlideTransition, SwapTransition=U.SwapTransition,
+                                       FadeTransition=U.FadeTransition, WipeTransition=U.WipeTransition,
+                                       FallOutTransition=U.FallOutTransition, RiseInTransition=U.RiseInTransition,
+                                       CardTransition=U.CardTransition),
+        "kivy.uix.modalview": dict(ModalView=U.ModalView),
+        "kivy.uix.popup": dict(Popup=U.Popup),
+        "kivy.uix.dropdown": dict(DropDown=U.DropDown),
+        "kivy.uix.spinner": dict(Spinner=U.Spinner, SpinnerOption=U.SpinnerOption),
+        "kivy.uix.tabbedpanel": dict(TabbedPanel=U.TabbedPanel, TabbedPanelItem=U.TabbedPanelItem, TabbedPanelHeader=U.TabbedPanelHeader),
+        "kivy.uix.carousel": dict(Carousel=U.Carousel),
+        "kivy.uix.image": dict(Image=U.Image, AsyncImage=U.AsyncImage),
+        "kivy.uix.recycleview": dict(RecycleView=U.RecycleView),
+        "kivy.uix.recycleboxlayout": dict(RecycleBoxLayout=U.RecycleBoxLayout),
+        "kivy.uix.behaviors": dict(ButtonBehavior=U.ButtonBehavior, ToggleButtonBehavior=U.ToggleButtonBehavior,
+                                   FocusBehavior=U.FocusBehavior, CompoundSelectionBehavior=U.CompoundSelectionBehavior,
+                                   DragBehavior=U.DragBehavior, CoverBehavior=U.CoverBehavior, TouchRippleBehavior=U.TouchRippleBehavior),
+    })
+    for mod in ("kivy_gfx", "kivy_extra"):
+        try:
+            M = __import__(mod)
+            subs.update(M.MODULES)
+        except ImportError: pass
     for name, attrs in subs.items():
+        parent = name.rsplit(".", 1)[0]
+        if parent not in sys.modules: _m(parent, True)
         m = _m(name, **attrs)
-        setattr(sys.modules[name.rsplit(".", 1)[0]], name.rsplit(".", 1)[1], m)
+        setattr(sys.modules[parent], name.rsplit(".", 1)[1], m)
     core = _m("kivy.core", True)
     k.core = core
     cw = _m("kivy.core.window", True, Window=Window)
