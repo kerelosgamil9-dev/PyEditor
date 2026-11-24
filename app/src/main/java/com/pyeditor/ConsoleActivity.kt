@@ -135,6 +135,7 @@ open class ConsoleActivity : Activity() {
           try {
             val w = WebView(this)
             w.settings.javaScriptEnabled = true
+            w.settings.mediaPlaybackRequiresUserGesture = false      // allow Sound.play() / audio from code
             w.setBackgroundColor(Color.parseColor("#d9d9d9"))
             w.addJavascriptInterface(TkBridge(), "Native")
             w.webViewClient = object : WebViewClient() {
