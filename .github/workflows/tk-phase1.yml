@@ -1,0 +1,91 @@
+name: TK Phase1 (build _tkinter.so)
+# Manual only: Actions tab -> "TK Phase1" -> Run workflow
+on: workflow_dispatch
+
+jobs:
+  tk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Download AndroWish source and build Tcl/Tk/SDL2/FreeType (arm64)
+        run: |
+          set +e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tcl bc zip file
+          mkdir -p $HOME/work && cd $HOME/work
+          curl -fSL -o src.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
+          mkdir -p src && tar xzf src.tar.gz -C src
+          P=$(cd src/androwish-c48f047f5b && pwd); echo "$P" > /tmp/projdir
+          cd $P
+          export PATH="$ANDROID_NDK_HOME:$PATH"
+          CF="-Wno-error=incompatible-function-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=deprecated-non-prototype -Wno-error=macro-redefined"
+          ndk-build -k -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-24 \
+            APP_MODULES="tcl tk SDL2 freetype" APP_CFLAGS="$CF" APP_CPPFLAGS="$CF" > $HOME/work/ndk-build.log 2>&1
+          tail -5 $HOME/work/ndk-build.log
+          ls -la libs/arm64-v8a
+
+      - name: Get Chaquopy Python 3.11 headers/libpython and CPython sources
+        run: |
+          set +e
+          cd $HOME/work
+          V=3.11.14-0
+          curl -fSL -o chaquo.zip https://repo1.maven.org/maven2/com/chaquo/python/target/$V/target-$V-arm64-v8a.zip
+          ls -la chaquo.zip
+          mkdir -p chaquo && unzip -q chaquo.zip -d chaquo
+          echo "---- chaquopy layout ----"
+          find chaquo -maxdepth 4 \( -name "libpython*" -o -name "pyconfig.h" -o -name "Python.h" \) | head
+          # CPython source (same minor version) for _tkinter.c and the pure-python tkinter package
+          curl -fSL -o cpython.tgz https://github.com/python/cpython/archive/refs/tags/v3.11.14.tar.gz || \
+            curl -fSL -o cpython.tgz https://www.python.org/ftp/python/3.11.14/Python-3.11.14.tgz
+          mkdir -p cpython && tar xzf cpython.tgz -C cpython --strip-components=1
+          ls cpython/Modules/_tkinter.c cpython/Modules/tkappinit.c cpython/Lib/tkinter | head -30
+
+      - name: Compile _tkinter.so
+        run: |
+          set +e
+          cd $HOME/work
+          P=$(cat /tmp/projdir)
+          CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          PYH=$(dirname $(find chaquo -name pyconfig.h | head -1))
+          PYLIB=$(find chaquo -name "libpython3.11*.so" | head -1)
+          echo "PYH=$PYH"; echo "PYLIB=$PYLIB"
+          TCLH=$(dirname $(find $P/jni/tcl -name tcl.h | head -1))
+          TKH=$(dirname $(find $P/jni/sdl2tk -name tk.h | head -1))
+          INC="-I$PYH -I$TCLH -I$TKH"
+          for d in $(find $P/jni/sdl2tk -type d -name X11); do INC="$INC -I$(dirname $d)"; done
+          INC="$INC -I$P/jni/sdl2tk/sdl -I$P/jni/SDL2/include"
+          echo "INC=$INC"
+          mkdir -p out
+          $CC -shared -fPIC -O2 -DWITH_APPINIT \
+            -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types \
+            $INC cpython/Modules/_tkinter.c cpython/Modules/tkappinit.c \
+            -o out/_tkinter.cpython-311.so \
+            -L$P/libs/arm64-v8a -ltcl -ltk $PYLIB -llog -lm -ldl 2>&1 | tee compile.log | tail -40
+          ls -la out/_tkinter.cpython-311.so
+          echo "---- NEEDED ----"
+          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d out/_tkinter.cpython-311.so | grep NEEDED
+          echo "---- init symbol ----"
+          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm -D out/_tkinter.cpython-311.so | grep -E "PyInit|Tcl_Init|Tk_Init" | head
+
+      - name: Collect
+        if: always()
+        run: |
+          set +e
+          cd $HOME/work; mkdir -p out
+          P=$(cat /tmp/projdir)
+          cp ndk-build.log compile.log out/ 2>/dev/null
+          mkdir -p out/jniLibs/arm64-v8a && cp $P/libs/arm64-v8a/*.so out/jniLibs/arm64-v8a/
+          mkdir -p out/tcl_library out/tk_library out/python_lib
+          cp -r $P/jni/tcl/library/* out/tcl_library/
+          cp -r $P/jni/sdl2tk/library/* out/tk_library/
+          cp -r cpython/Lib/tkinter out/python_lib/tkinter
+          cp cpython/Lib/turtle.py out/python_lib/
+          find chaquo -name "libpython3.11*.so" > out/chaquopy_libpython.txt
+          du -sh out/*; ls -la out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tk-phase1
+          path: ~/work/out
+          if-no-files-found: warn
