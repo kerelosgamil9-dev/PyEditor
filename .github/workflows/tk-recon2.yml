@@ -1,0 +1,31 @@
+name: TK Recon2 (JNI callbacks)
+# Manual only: Actions tab -> "TK Recon2" -> Run workflow
+on: workflow_dispatch
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download source and grep
+        run: |
+          set +e
+          mkdir -p $HOME/work && cd $HOME/work
+          curl -fSL -o src.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
+          mkdir -p src && tar xzf src.tar.gz -C src
+          cd src/androwish-c48f047f5b
+          O=$HOME/work/out; mkdir -p $O
+          echo "== Java classes/methods that native code calls (JNI)" > $O/jni_calls.txt
+          grep -rnE "FindClass|GetMethodID|GetStaticMethodID|GetFieldID|GetStaticFieldID" jni/sdl2tk jni/SDL2/src/core/android jni/src jni/tcl/unix jni/tcl/generic 2>/dev/null | grep -v "^Binary" | cut -c1-220 >> $O/jni_calls.txt
+          echo "== references to AndroWish / tk.tcl.wish in native code" > $O/wish_refs.txt
+          grep -rnE "tk/tcl/wish|tk\.tcl\.wish|AndroWish" jni/sdl2tk jni/SDL2/src jni/tcl/unix 2>/dev/null | cut -c1-200 >> $O/wish_refs.txt
+          cp jni/SDL2/src/main/android/SDL_android_main.c $O/ 2>/dev/null
+          cp jni/SDL2/include/SDL_version.h $O/ 2>/dev/null
+          cp jni/sdl2tk/tk-config.mk jni/tcl/tcl-config.mk $O/ 2>/dev/null
+          ls jni/sdl2tk/sdl | head -80 > $O/sdl_dir.txt
+          cp jni/SDL2/src/core/android/SDL_android.c $O/ 2>/dev/null
+          wc -c $O/*
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tk-recon2
+          path: ~/work/out
