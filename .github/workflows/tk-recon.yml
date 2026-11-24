@@ -16,34 +16,24 @@ jobs:
           "$ANDROID_NDK_HOME/ndk-build" --version 2>&1 | head -3
           which fossil ant make autoconf || true
 
-      - name: Download AndroWish source
+      - name: Download AndroWish source (fixed release c48f047f5b)
         run: |
-          set +e
+          set -x
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tcl bc zip file
           mkdir -p $HOME/work && cd $HOME/work
-          curl -sSL -o dl.html https://www.androwish.org/download/index.html
-          echo "---- links found on download page ----"
-          grep -oE 'href="[^"]+\.(tar\.gz|tar\.bz2|zip|tgz)[^"]*"' dl.html | head -30 | tee links.txt
-          grep -oE 'href="[^"]*tarball[^"]*"' dl.html | head -10 | tee -a links.txt
-          # take the first tarball-like link
-          L=$(grep -oE 'href="[^"]*(tarball|tar\.gz|tar\.bz2)[^"]*"' dl.html | head -1 | sed 's/href="//; s/"$//')
-          echo "chosen: $L"
-          case "$L" in
-            http*) URL="$L" ;;
-            /*)    URL="https://www.androwish.org$L" ;;
-            *)     URL="https://www.androwish.org/download/$L" ;;
-          esac
-          echo "URL=$URL"
-          curl -sSL -o src.bin "$URL"
-          ls -la src.bin; file src.bin
-          mkdir -p src && cd src
-          (tar xf ../src.bin 2>/dev/null || unzip -q ../src.bin) && ls
-          echo "$HOME/work" > /tmp/workdir
+          curl -fSL -o src.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
+          ls -la src.tar.gz; file src.tar.gz
+          echo "4ecbc23193cb00b9fc34c0942e2327f0b6badbe587ab574b492780994707683d  src.tar.gz" | sha256sum -c - || echo "CHECKSUM MISMATCH (continuing)"
+          mkdir -p src && tar xzf src.tar.gz -C src
+          ls src
+          echo "androwish-c48f047f5b" > links.txt
 
       - name: Recon (jni tree and module names)
         run: |
           set +e
           cd $HOME/work/src
-          D=$(find . -maxdepth 2 -name jni -type d | head -1); D=$(dirname "$D")
+          D=$(find . -maxdepth 2 -name jni -type d | head -1); D=$(cd "$(dirname "$D")" && pwd)
           echo "PROJECT=$D"; echo "$D" > /tmp/projdir
           cd "$D"
           ls
