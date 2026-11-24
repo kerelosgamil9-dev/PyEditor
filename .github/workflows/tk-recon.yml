@@ -1,0 +1,86 @@
+name: TK Phase0 (AndroWish recon + build)
+# Manual only: Actions tab -> "TK Phase0" -> Run workflow
+on: workflow_dispatch
+
+jobs:
+  tk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Tool info
+        run: |
+          set +e
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          ls "$ANDROID_HOME/ndk" 2>/dev/null
+          "$ANDROID_NDK_HOME/ndk-build" --version 2>&1 | head -3
+          which fossil ant make autoconf || true
+
+      - name: Download AndroWish source
+        run: |
+          set +e
+          mkdir -p $HOME/work && cd $HOME/work
+          curl -sSL -o dl.html https://www.androwish.org/download/index.html
+          echo "---- links found on download page ----"
+          grep -oE 'href="[^"]+\.(tar\.gz|tar\.bz2|zip|tgz)[^"]*"' dl.html | head -30 | tee links.txt
+          grep -oE 'href="[^"]*tarball[^"]*"' dl.html | head -10 | tee -a links.txt
+          # take the first tarball-like link
+          L=$(grep -oE 'href="[^"]*(tarball|tar\.gz|tar\.bz2)[^"]*"' dl.html | head -1 | sed 's/href="//; s/"$//')
+          echo "chosen: $L"
+          case "$L" in
+            http*) URL="$L" ;;
+            /*)    URL="https://www.androwish.org$L" ;;
+            *)     URL="https://www.androwish.org/download/$L" ;;
+          esac
+          echo "URL=$URL"
+          curl -sSL -o src.bin "$URL"
+          ls -la src.bin; file src.bin
+          mkdir -p src && cd src
+          (tar xf ../src.bin 2>/dev/null || unzip -q ../src.bin) && ls
+          echo "$HOME/work" > /tmp/workdir
+
+      - name: Recon (jni tree and module names)
+        run: |
+          set +e
+          cd $HOME/work/src
+          D=$(find . -maxdepth 2 -name jni -type d | head -1); D=$(dirname "$D")
+          echo "PROJECT=$D"; echo "$D" > /tmp/projdir
+          cd "$D"
+          ls
+          echo "---- jni ----"; ls jni
+          echo "---- Application.mk ----"; cat jni/Application.mk
+          echo "---- modules (tcl / tk / sdl) ----"
+          grep -rhE '^\s*LOCAL_MODULE\s*:?=' jni --include=Android.mk | grep -iE 'tcl|tk|sdl|freetype|agg|png|jpeg|z\b' | sort -u | head -80
+          echo "---- python / tkinter hints ----"
+          grep -rl "tkinter" . 2>/dev/null | head
+
+      - name: Build native libs (arm64-v8a, keep going on errors)
+        run: |
+          set +e
+          cd $(cat /tmp/projdir)
+          export PATH="$ANDROID_NDK_HOME:$PATH"
+          ndk-build -k -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-24 2>&1 | tee $HOME/work/ndk-build.log | tail -n 60
+          echo "---- produced libs ----"
+          find libs -name '*.so' | sort | tee $HOME/work/libs.txt | head -100
+          echo "count: $(wc -l < $HOME/work/libs.txt)"
+          echo "---- errors ----"
+          grep -nE "error:|Error [0-9]|\*\*\* " $HOME/work/ndk-build.log | head -60
+
+      - name: Collect
+        if: always()
+        run: |
+          set +e
+          cd $HOME/work
+          mkdir -p out
+          cp ndk-build.log libs.txt links.txt out/ 2>/dev/null
+          cp -r $(cat /tmp/projdir)/libs out/libs 2>/dev/null
+          cp $(cat /tmp/projdir)/jni/Application.mk out/ 2>/dev/null
+          (cd $(cat /tmp/projdir) && find jni -name Android.mk | sort) > out/android_mk_list.txt
+          ls -R out | head -50
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tk-phase0
+          path: ~/work/out
+          if-no-files-found: warn
