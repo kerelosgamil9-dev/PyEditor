@@ -80,6 +80,11 @@ class Canvas(_Group):
         for ins in self._all():
             try: ins._render(cv, st, m)
             except Exception as e: print("canvas error:", type(ins).__name__, e)
+    def simple_bg(self):
+        """True when the canvas is only a plain background (Color + one Rectangle): no drawing layer needed."""
+        shapes = [i for i in self._all() if not isinstance(i, Color)]
+        return len(shapes) <= 1 and all(isinstance(i, (Rectangle, RoundedRectangle)) for i in shapes)
+
     def background_color(self):
         """Color + Rectangle in the canvas -> a plain background (used for Label / Button / TextInput)."""
         col = None

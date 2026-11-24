@@ -43,6 +43,48 @@ def _hex(c, fallback="#ffffff"):
         return fallback
 
 
+def _with_alpha(h, a):
+    if a >= 1: return h
+    return "rgba(%d,%d,%d,%.2f)" % (int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16), max(0.0, a))
+
+
+_MK = None
+
+
+def _markup_html(t):
+    """Kivy markup ([b] [i] [u] [s] [sub] [sup] [color=] [size=] [font=] [ref=]) -> HTML for the label"""
+    import re, html
+    global _MK
+    if _MK is None: _MK = re.compile(r"\[(/?)(b|i|u|s|sub|sup|color|size|font|font_family|ref|anchor)(?:=([^\]]*))?\]")
+    def esc(x): return (html.escape(x, quote=False).replace("&amp;bl;", "[").replace("&amp;br;", "]").replace("&amp;amp;", "&")
+                        .replace("\n", "<br>"))
+    out = []; stack = []; pos = 0
+    for m in _MK.finditer(t):
+        out.append(esc(t[pos:m.start()])); pos = m.end()
+        close, tag, arg = m.groups(); arg = (arg or "").strip()
+        if close:
+            if any(x[0] == tag for x in stack):
+                while stack:
+                    top = stack.pop(); out.append(top[1])
+                    if top[0] == tag: break
+            continue
+        if tag in ("b", "i", "u", "s", "sub", "sup"): o, c = "<%s>" % tag, "</%s>" % tag
+        elif tag == "color":
+            a = arg.lstrip("#")
+            if len(a) in (6, 8): a = "#" + a[:6]
+            o, c = '<span style="color:%s">' % html.escape(a if a.startswith("#") else arg), "</span>"
+        elif tag == "size":
+            n = re.sub(r"[^0-9.]", "", arg) or "15"
+            o, c = '<span style="font-size:%spx">' % n, "</span>"
+        elif tag in ("font", "font_family"): o, c = '<span style="font-family:%s">' % html.escape(arg), "</span>"
+        elif tag == "ref": o, c = '<span data-ref="%s" style="text-decoration:underline;cursor:pointer">' % html.escape(arg), "</span>"
+        else: out.append('<a id="%s"></a>' % html.escape(arg)); continue
+        out.append(o); stack.append((tag, c))
+    out.append(esc(t[pos:]))
+    while stack: out.append(stack.pop()[1])
+    return "".join(out)
+
+
 def _mix(c, base):
     """Kivy tints the default (gray) button image with background_color."""
     try: return _hex([float(c[i]) * base for i in range(3)])
@@ -141,6 +183,39 @@ class DictProperty(Property):
     def __init__(self, defaultvalue=None, **kw): Property.__init__(self, defaultvalue or {}, **kw)
     def _default(self, inst): return _ODict(self.default, inst, self.name)
     def _conv(self, inst, v): return _ODict(v, inst, self.name) if isinstance(v, dict) else v
+
+
+_NAMED = {"red": (1, 0, 0, 1), "green": (0, 0.5, 0, 1), "lime": (0, 1, 0, 1), "blue": (0, 0, 1, 1), "white": (1, 1, 1, 1),
+          "black": (0, 0, 0, 1), "yellow": (1, 1, 0, 1), "cyan": (0, 1, 1, 1), "magenta": (1, 0, 1, 1), "orange": (1, .65, 0, 1),
+          "gray": (.5, .5, .5, 1), "grey": (.5, .5, .5, 1), "purple": (.5, 0, .5, 1), "pink": (1, .75, .8, 1),
+          "brown": (.65, .16, .16, 1), "transparent": (0, 0, 0, 0)}
+
+
+class ColorProperty(ListProperty):
+    def __init__(self, defaultvalue=None, **kw):
+        ListProperty.__init__(self, [1, 1, 1, 1], **kw)
+        self.default = self._plain(defaultvalue if defaultvalue is not None else [1, 1, 1, 1])
+    @staticmethod
+    def _plain(v):
+        if isinstance(v, str): v = _NAMED.get(v.lower()) or get_color_from_hex(v)
+        v = list(v)
+        return v + [1] if len(v) == 3 else v
+    def _conv(self, inst, v):
+        if isinstance(v, str):
+            v = _NAMED.get(v.lower()) or get_color_from_hex(v)
+        if isinstance(v, (list, tuple)) and len(v) == 3: v = list(v) + [1]
+        return ListProperty._conv(self, inst, v)
+
+
+class BoundedNumericProperty(NumericProperty):
+    def __init__(self, defaultvalue=0, **kw):
+        NumericProperty.__init__(self, defaultvalue); self.min = kw.get("min"); self.max = kw.get("max")
+    def _conv(self, inst, v):
+        v = _num(v)
+        if v is not None:
+            if self.min is not None and v < self.min: v = self.min
+            if self.max is not None and v > self.max: v = self.max
+        return v
 
 
 class OptionProperty(Property):
@@ -291,6 +366,15 @@ class Widget(EventDispatcher):
         EventDispatcher.__init__(self)
         Builder.apply(self)               # KV class rules first, then the keyword arguments win
         self._apply_kw(kw)
+        self.on_kv_post(self)
+
+    def on_kv_post(self, base_widget): pass
+    def to_window(self, x, y, initial=True, relative=False): return (x, y)
+    def to_widget(self, x, y, relative=False): return (x, y)
+    def to_parent(self, x, y, relative=False): return (x, y)
+    def to_local(self, x, y, relative=False): return (x, y)
+    def get_parent_window(self): return Window
+    def export_to_png(self, filename, *a, **k): print("[kivy] export_to_png is not supported in this editor")
 
     @property
     def canvas(self):
@@ -348,7 +432,9 @@ class Widget(EventDispatcher):
     def _el(self): return self.__dict__.get("_outer") or self._w
 
     def _wants_canvas_layer(self):
-        if type(self)._make is not Widget._make: return False
+        if type(self)._make is not Widget._make:
+            c = self.__dict__.get("_canvas")       # Label / Button / TextInput...: only when the canvas has real shapes
+            return c is not None and not c.empty() and not c.simple_bg()
         c = self.__dict__.get("_canvas")
         if c is not None and not c.empty(): return True
         cls = type(self)           # drawing widgets usually override the touch handlers: give them a canvas up front
@@ -361,9 +447,13 @@ class Widget(EventDispatcher):
             outer = tk.Frame(master, bg=_CLEAR, bd=0, highlightthickness=0)
             cv = tk.Canvas(outer, bg=_CLEAR, highlightthickness=0, bd=0)
             cv.place(relx=0, rely=0, relwidth=1, relheight=1)
-            inner = tk.Frame(outer, bg="rgba(0,0,0,0)", bd=0, highlightthickness=0)
+            d["_outer"] = outer; d["_cv"] = cv
+            if type(self)._make is Widget._make:
+                inner = tk.Frame(outer, bg="rgba(0,0,0,0)", bd=0, highlightthickness=0)
+            else:
+                inner = self._make(outer)            # the real label / button on top of the drawing
             inner.place(relx=0, rely=0, relwidth=1, relheight=1)
-            d["_outer"] = outer; d["_cv"] = cv; self._w = inner
+            self._w = inner
         else:
             d["_outer"] = None; d["_cv"] = None
             self._w = self._make(master)
@@ -407,15 +497,15 @@ class Widget(EventDispatcher):
     def _canvas_redraw(self):
         c = self.__dict__.get("_canvas")
         if c is None or c.empty(): return
+        if self.__dict__.get("_cv") is not None: c._draw(); return
+        if self._wants_canvas_layer(): self._rebuild(); return        # drawing needs a canvas layer under the widget
         if self._w is not None and type(self)._make is not Widget._make:
-            self._restyle_self()                       # Label/Button...: canvas background -> background color
-        elif self.__dict__.get("_cv") is None:
-            self._rebuild()
-        else: c._draw()
+            self._restyle_self()                                      # Label/Button...: simple canvas background -> color
 
     def _canvas_bg(self):
         c = self.__dict__.get("_canvas")
-        return c.background_color() if c is not None else None
+        if c is None or self.__dict__.get("_cv") is not None: return None
+        return c.background_color()
 
     # touch (mouse) events -> on_touch_down / on_touch_move / on_touch_up
     def _hook_touch(self):
@@ -566,10 +656,14 @@ class BoxLayout(Layout):
                 _fix_size(c, "pvh", c.height if cross else None)
             c._el.grid(**kw)
         old = self.__dict__.get("_n", 0)
-        for i in range(n, old):                      # clear leftover tracks of removed children
+        for i in range(n + 1, old + 2):              # clear leftover tracks of removed children
             (self._w.rowconfigure if vert else self._w.columnconfigure)(i, weight=0, minsize=0)
         if vert: self._w.columnconfigure(0, weight=1)
-        else: self._w.rowconfigure(0, weight=1)
+        else:
+            self._w.rowconfigure(0, weight=1)
+            # all children have a fixed width: an empty stretching column keeps them at the left (Kivy), not centered
+            spacer = not any(c.size_hint_x is not None for c in kids)
+            self._w.columnconfigure(n, weight=1 if spacer else 0, minsize=0)
         self.__dict__["_n"] = n
         # minimum size (used with ScrollView: height: self.minimum_height)
         if vert:
@@ -600,7 +694,7 @@ def _fix_size(c, opt, v):
 
 
 def _track(hint, size):
-    if hint is None: return {"weight": 0, "minsize": int(size or 0)}
+    if hint is None: return {"weight": -1, "minsize": int(size or 0)}      # -1 = exactly this many pixels
     return {"weight": max(1, int(float(hint) * 1000)), "minsize": 0}
 
 
@@ -637,15 +731,15 @@ class GridLayout(Layout):
         colw, rowh = {}, {}
         for col, cs in ch.items():
             fixed = [x for x in cs if x.size_hint_x is None]
-            if cfd and cdw: self._w.columnconfigure(col, weight=0, minsize=int(cdw)); colw[col] = cdw
-            elif fixed: m = max(x.width for x in fixed); self._w.columnconfigure(col, weight=0, minsize=int(m)); colw[col] = m
+            if cfd and cdw: self._w.columnconfigure(col, weight=-1, minsize=int(cdw)); colw[col] = cdw
+            elif fixed: m = max(x.width for x in fixed); self._w.columnconfigure(col, weight=-1, minsize=int(m)); colw[col] = m
             else:
                 self._w.columnconfigure(col, weight=max(1, int(min(float(x.size_hint_x) for x in cs) * 1000)), minsize=int(cdw))
                 colw[col] = cdw
         for r, cs in rh.items():
             fixed = [x for x in cs if x.size_hint_y is None]
-            if rfd and rdh: self._w.rowconfigure(r, weight=0, minsize=int(rdh)); rowh[r] = rdh
-            elif fixed: m = max(x.height for x in fixed); self._w.rowconfigure(r, weight=0, minsize=int(m)); rowh[r] = m
+            if rfd and rdh: self._w.rowconfigure(r, weight=-1, minsize=int(rdh)); rowh[r] = rdh
+            elif fixed: m = max(x.height for x in fixed); self._w.rowconfigure(r, weight=-1, minsize=int(m)); rowh[r] = m
             else:
                 self._w.rowconfigure(r, weight=max(1, int(min(float(x.size_hint_y) for x in cs) * 1000)), minsize=int(rdh))
                 rowh[r] = rdh
@@ -658,6 +752,7 @@ class GridLayout(Layout):
 
 
 class Label(Widget):
+    __events__ = ("on_ref_press",)
     _DERIVED = dict(Widget._DERIVED, text=("texture_size",), font_size=("texture_size",))
     text = StringProperty("")
     font_size = NumericProperty(15)
@@ -698,9 +793,16 @@ class Label(Widget):
              "anchor": an, "justify": {"left": "left", "right": "right"}.get(h, "center")}
         ts = self.text_size
         if ts and ts[0]: c["wraplength"] = int(ts[0])
+        if self.markup and "[" in (self.text or ""): c["pvhtml"] = _markup_html(self.text)      # after "text": styled version
         return c
 
-    def _make(self, master): return tk.Label(master, bd=0, **self._cfg())
+    def on_ref_press(self, *a): pass
+
+    def _make(self, master):
+        w = tk.Label(master, bd=0, **self._cfg())
+        try: tk._pv[("ref", w._id)] = lambda e: self.dispatch("on_ref_press", e.get("ref"))
+        except Exception: pass
+        return w
 
 
 class Button(Label):
@@ -712,8 +814,11 @@ class Button(Label):
     state = Property("normal")
 
     def _bgc(self):
-        if self.background_normal == "": return _hex(self.background_color)      # no image: the exact color
-        return self._canvas_bg() or _mix(self.background_color, .3)
+        bc = self.background_color
+        a = float(bc[3]) if len(bc) > 3 else 1.0
+        if self.background_normal == "": base = _hex(bc)                              # no image: the exact color
+        else: base = self._canvas_bg() or _mix(bc, .3)
+        return _with_alpha(base, a)
 
     def _cfg(self):
         c = Label._cfg(self)
@@ -772,6 +877,13 @@ class TextInput(Widget):
     background_color = ListProperty([1, 1, 1, 1])
     focus = BooleanProperty(False)
     halign = Property("left")
+    input_filter = Property(None)
+    input_type = Property("text")
+    font_name = StringProperty("Roboto")
+    padding = Property([6, 6, 6, 6])
+    cursor_pos = ListProperty([0, 0])
+    selection_text = StringProperty("")
+    write_tab = BooleanProperty(True)
 
     def _cfg(self):
         c = {"fg": _hex(self.foreground_color), "bg": _hex(self.background_color),
@@ -829,10 +941,30 @@ class TextInput(Widget):
         if self.multiline: return self._w.get("1.0", "end-1c")
         return self._var.get()
 
+    def _filtered(self, new):
+        f, old = self.input_filter, self.text
+        if not f or new == old: return new
+        if f == "int": return "".join(ch for ch in new if ch.isdigit())
+        if f == "float":
+            out = ""; dot = False
+            for ch in new:
+                if ch.isdigit(): out += ch
+                elif ch == "." and not dot: out += ch; dot = True
+            return out
+        if callable(f):
+            if new.startswith(old): return old + (f(new[len(old):], False) or "")
+            return f(new, False) or ""
+        return new
+
     def _from_widget(self):
         if self._w is None or self._lock or self.__dict__.get("_hint_on"): return
         self._lock = True
-        try: self.text = self._get_widget_text()
+        try:
+            raw = self._get_widget_text(); t = self._filtered(raw)
+            if t != raw:                                   # rejected characters: write the filtered text back
+                if self.multiline: self._w.delete("1.0", "end"); self._w.insert("1.0", t)
+                else: self._var.set(t)
+            self.text = t
         finally: self._lock = False
 
     def _prop_changed(self, name, value):
@@ -850,8 +982,14 @@ class TextInput(Widget):
         else: Widget._prop_changed(self, name, value)
 
     def on_text_validate(self, *a): pass
-    def insert_text(self, s): self.text += s
+    def insert_text(self, s, from_undo=False): self.text += s
     def select_all(self): pass
+    def copy(self, data=""): pass
+    def paste(self): pass
+    def cut(self): pass
+    def do_backspace(self, from_undo=False, mode="bkspc"): self.text = self.text[:-1]
+    def cancel_selection(self): pass
+    def get_cursor_from_index(self, i): return (i, 0)
 
 
 class CheckBox(Widget):
@@ -940,7 +1078,7 @@ class Touch:
         self.x = self.y = self.ox = self.oy = 0.0; self.dx = self.dy = 0.0; self.pos = (0.0, 0.0)
         self.ud = {}; self.is_mouse_scrolling = False; self.button = "left"; self.is_touch = True
         self.is_double_tap = False; self.is_triple_tap = False; self.profile = ["pos"]; self.uid = id(self)
-        self.grab_current = None; self.time_start = time.time()
+        self.grab_current = None; self.time_start = time.time(); self._rx = self._ry = 0.0
     def grab(self, w, exclusive=False): self.grab_current = w
     def ungrab(self, w): self.grab_current = None
     def push(self, *a): pass
@@ -960,10 +1098,12 @@ def _mk_touch(widget, e, name):
     h = float(widget.height or 0) or float(getattr(e, "height", 0) or 0)
     x, y = float(widget.x) + float(e.x), float(widget.y) + h - float(e.y)
     t = d.get("_tobj")
+    rx, ry = float(getattr(e, "x_root", 0) or 0), float(getattr(e, "y_root", 0) or 0)
     if name == "on_touch_down" or t is None:
         t = d["_tobj"] = Touch(); t.ox, t.oy = x, y
     else:
-        t.dx, t.dy = x - t.x, y - t.y
+        t.dx, t.dy = rx - t._rx, -(ry - t._ry)           # window coordinates: correct even if the widget moves
+    t._rx, t._ry = rx, ry
     t.x, t.y = x, y; t.pos = (x, y)
     if name == "on_touch_up": d["_tobj"] = None
     return t
@@ -1144,6 +1284,18 @@ class _Win(EventDispatcher):
         EventDispatcher._changed(self, name, value)
     @property
     def size(self): return (tk._st["w"], tk._st["h"])
+    @size.setter
+    def size(self, v): pass
+    dpi = 96.0
+    density = 1.0
+    top = 0
+    left = 0
+    def minimize(self): pass
+    def maximize(self): pass
+    def restore(self): pass
+    def set_title(self, t):
+        r = tk._st.get("root")
+        if r is not None: r.title(t)
     @property
     def width(self): return tk._st["w"]
     @property
@@ -1251,8 +1403,8 @@ def _install():
         "kivy.properties": dict(Property=Property, StringProperty=StringProperty, NumericProperty=NumericProperty,
                                 BooleanProperty=BooleanProperty, ObjectProperty=ObjectProperty, ListProperty=ListProperty,
                                 DictProperty=DictProperty, OptionProperty=OptionProperty, AliasProperty=AliasProperty,
-                                ReferenceListProperty=ReferenceListProperty, BoundedNumericProperty=NumericProperty,
-                                ColorProperty=ListProperty, VariableListProperty=ListProperty),
+                                ReferenceListProperty=ReferenceListProperty, BoundedNumericProperty=BoundedNumericProperty,
+                                ColorProperty=ColorProperty, VariableListProperty=ListProperty),
         "kivy.clock": dict(Clock=Clock, mainthread=mainthread, ClockEvent=ClockEvent),
         "kivy.metrics": dict(dp=dp, sp=sp, mm=mm, cm=cm, inch=inch, pt=pt, Metrics=_Metrics()),
         "kivy.lang": dict(Builder=Builder),
@@ -1292,6 +1444,20 @@ def _install():
         "kivy.uix.tabbedpanel": dict(TabbedPanel=U.TabbedPanel, TabbedPanelItem=U.TabbedPanelItem, TabbedPanelHeader=U.TabbedPanelHeader),
         "kivy.uix.carousel": dict(Carousel=U.Carousel),
         "kivy.uix.image": dict(Image=U.Image, AsyncImage=U.AsyncImage),
+        "kivy.uix.scatter": dict(Scatter=U.Scatter, ScatterPlane=U.ScatterPlane),
+        "kivy.uix.accordion": dict(Accordion=U.Accordion, AccordionItem=U.AccordionItem),
+        "kivy.uix.bubble": dict(Bubble=U.Bubble, BubbleButton=U.BubbleButton),
+        "kivy.uix.pagelayout": dict(PageLayout=U.PageLayout),
+        "kivy.uix.actionbar": dict(ActionBar=U.ActionBar, ActionView=U.ActionView, ActionPrevious=U.ActionPrevious,
+                                   ActionButton=U.ActionButton, ActionToggleButton=U.ActionToggleButton, ActionSeparator=U.ActionSeparator,
+                                   ActionGroup=U.ActionGroup, ActionOverflow=U.ActionOverflow, ActionItem=U.ActionItem, ActionCheck=U.ActionCheck),
+        "kivy.uix.splitter": dict(Splitter=U.Splitter),
+        "kivy.uix.codeinput": dict(CodeInput=U.CodeInput),
+        "kivy.uix.colorpicker": dict(ColorPicker=U.ColorPicker),
+        "kivy.uix.filechooser": dict(FileChooserListView=U.FileChooserListView, FileChooserIconView=U.FileChooserIconView, FileChooser=U.FileChooser),
+        "kivy.uix.video": dict(Video=U.Video),
+        "kivy.uix.videoplayer": dict(VideoPlayer=U.VideoPlayer),
+        "kivy.uix.camera": dict(Camera=U.Camera),
         "kivy.uix.recycleview": dict(RecycleView=U.RecycleView),
         "kivy.uix.recycleboxlayout": dict(RecycleBoxLayout=U.RecycleBoxLayout),
         "kivy.uix.behaviors": dict(ButtonBehavior=U.ButtonBehavior, ToggleButtonBehavior=U.ToggleButtonBehavior,

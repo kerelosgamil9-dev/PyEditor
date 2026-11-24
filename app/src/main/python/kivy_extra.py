@@ -307,18 +307,74 @@ class _Clipboard:
     def get(self, mimetype="text/plain"): return self._t
 
 
+_AID = [0]
+_MIME = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".m4a": "audio/mp4",
+         ".aac": "audio/aac", ".flac": "audio/flac", ".opus": "audio/ogg", ".webm": "audio/webm"}
+
+
 class Sound(EventDispatcher):
-    volume = NumericProperty(1.0); loop = Property(False); source = Property(""); state = Property("stop")
-    length = NumericProperty(0); pitch = NumericProperty(1)
-    _warned = False
+    """Audio played by the page (HTML5 audio): mp3 / wav / ogg / m4a ..."""
+    __events__ = ("on_play", "on_stop")
+    volume = NumericProperty(1.0)
+    loop = Property(False)
+    source = Property("")
+    state = Property("stop")
+    length = NumericProperty(0)
+    pitch = NumericProperty(1)
+
+    def __init__(self, **kw):
+        EventDispatcher.__init__(self)
+        import tkshim as tk
+        _AID[0] += 1; self._aid = _AID[0]; self._t0 = None; self._pos0 = 0.0
+        self._tk = tk
+        tk._pv[("aud", self._aid)] = self._ev
+        self._apply_kw(kw)
+        if self.source: self._load()
+
+    def _load(self):
+        src = self.source
+        try:
+            with open(src, "rb") as f: data = f.read()
+        except Exception as ex:
+            print("[kivy] cannot load sound %r: %s" % (src, ex)); return
+        if len(data) > 20 * 1024 * 1024: print("[kivy] sound file too big (max 20 MB)"); return
+        import base64
+        mime = _MIME.get(os.path.splitext(src)[1].lower(), "audio/mpeg")
+        self._tk._send("pvaud", self._aid, "load", "data:%s;base64,%s" % (mime, base64.b64encode(data).decode("ascii")))
+        self._tk._send("pvaud", self._aid, "vol", float(self.volume))
+        if self.loop: self._tk._send("pvaud", self._aid, "loop", 1)
+
+    def _ev(self, e):
+        if "dur" in e: self.length = float(e["dur"] or 0)
+        if e.get("ended"):
+            self.state = "stop"; self._t0 = None; self._pos0 = 0.0
+            self.dispatch("on_stop")
+
+    def _prop_changed(self, name, value):
+        t = getattr(self, "_tk", None)
+        if t is None: return
+        if name == "volume": t._send("pvaud", self._aid, "vol", float(value))
+        elif name == "loop": t._send("pvaud", self._aid, "loop", 1 if value else 0)
+        elif name == "pitch": t._send("pvaud", self._aid, "rate", float(value))
+        elif name == "source": self._load()
+
     def play(self):
-        if not Sound._warned:
-            print("[kivy] audio playback is not supported in this editor yet (play() ignored)"); Sound._warned = True
-        self.state = "play"
-    def stop(self): self.state = "stop"
-    def seek(self, pos): pass
-    def get_pos(self): return 0
-    def unload(self): pass
+        self._tk._send("pvaud", self._aid, "play")
+        self.state = "play"; self._t0 = time.time(); self.dispatch("on_play")
+    def stop(self):
+        self._tk._send("pvaud", self._aid, "stop")
+        self.state = "stop"; self._t0 = None; self._pos0 = 0.0
+        self.dispatch("on_stop")
+    def seek(self, pos):
+        self._tk._send("pvaud", self._aid, "seek", float(pos)); self._pos0 = float(pos)
+        if self.state == "play": self._t0 = time.time()
+    def get_pos(self):
+        if self.state == "play" and self._t0 is not None:
+            p = self._pos0 + time.time() - self._t0
+            return p % self.length if self.loop and self.length else p
+        return self._pos0
+    def unload(self):
+        self._tk._send("pvaud", self._aid, "free"); self.state = "stop"
     def on_play(self, *a): pass
     def on_stop(self, *a): pass
 
@@ -326,7 +382,8 @@ class Sound(EventDispatcher):
 class SoundLoader:
     @staticmethod
     def load(filename):
-        s = Sound(); s.source = filename; return s
+        if not os.path.exists(filename): return None
+        return Sound(source=filename)
     @staticmethod
     def register(cls): pass
 

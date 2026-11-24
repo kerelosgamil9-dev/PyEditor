@@ -2095,6 +2095,9 @@ class ttk_LabeledScale(ttk_Frame):
 
 
 # ---------------- event loop ----------------
+_pv = {}          # (kind, id) -> callback for custom page events (scroll, audio, link clicks...)
+
+
 def _handle(e):
     t = e.get("t")
     if t == "size": _st["w"], _st["h"] = e["w"], e["h"]; return
@@ -2103,6 +2106,10 @@ def _handle(e):
     if t == "err": print("[tk error]", e.get("m"), file=sys.stderr); return
     if t == "imgclose": _st["imgclosed"] = True; return
     if t == "focus": _st["focus"] = e.get("id", 0); return
+    if t == "pv":
+        cb = _pv.get((e.get("k"), e.get("id")))
+        if cb is not None: _cb(cb, e)
+        return
     if t == "ls":
         p = e.get("p") or os.getcwd()
         try:

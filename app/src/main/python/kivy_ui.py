@@ -78,8 +78,16 @@ class ScrollView(Widget):
 
     def _mode(self): return ("x" if self.do_scroll_x else "") + ("y" if self.do_scroll_y else "")
     def _make(self, master):
-        return tk.Frame(master, bg=_CLEAR, bd=0, highlightthickness=0, pvscroll=self._mode())
+        w = tk.Frame(master, bg=_CLEAR, bd=0, highlightthickness=0, pvscroll=self._mode())
+        tk._pv[("scroll", w._id)] = self._scrolled
+        return w
     def _cfg(self): return {"pvscroll": self._mode()}
+
+    def _scrolled(self, e):
+        d = self.__dict__
+        d["_sl"] = True
+        try: self.scroll_x = float(e.get("x", 0)); self.scroll_y = float(e.get("y", 1))
+        finally: d["_sl"] = False
 
     def _relayout(self):
         if self._w is None: return
@@ -91,6 +99,7 @@ class ScrollView(Widget):
 
     def _prop_changed(self, name, value):
         if name in ("scroll_x", "scroll_y") and self._w is not None:
+            if self.__dict__.get("_sl"): return
             tk._send("pvsc", self._w._id, value if name == "scroll_x" else None, value if name == "scroll_y" else None)
         else: Widget._prop_changed(self, name, value)
 
@@ -623,3 +632,282 @@ class CompoundSelectionBehavior(EventDispatcher): pass
 class DragBehavior(EventDispatcher): pass
 class CoverBehavior(EventDispatcher): pass
 class TouchRippleBehavior(EventDispatcher): pass
+
+
+# ===================================================================== Scatter (drag; rotation / scale as properties)
+class Scatter(FloatLayout):
+    do_translation_x = BooleanProperty(True)
+    do_translation_y = BooleanProperty(True)
+    do_rotation = BooleanProperty(True)
+    do_scale = BooleanProperty(True)
+    do_translation = AliasProperty(lambda s: (s.do_translation_x, s.do_translation_y),
+                                   lambda s, v: (setattr(s, "do_translation_x", bool(v if not isinstance(v, (list, tuple)) else v[0])),
+                                                 setattr(s, "do_translation_y", bool(v if not isinstance(v, (list, tuple)) else v[1]))))
+    scale = NumericProperty(1)
+    rotation = NumericProperty(0)
+    scale_min = NumericProperty(0.01)
+    scale_max = NumericProperty(1e20)
+    auto_bring_to_front = BooleanProperty(True)
+
+    def on_touch_down(self, touch): touch.ud["_sc"] = True; return True
+    def on_touch_move(self, touch):
+        if not touch.ud.get("_sc"): return False
+        if self.do_translation_x: self.x += touch.dx
+        if self.do_translation_y: self.y += touch.dy
+        return True
+    def on_touch_up(self, touch): return False
+
+    def _xf(self): return "rotate(%sdeg) scale(%s)" % (-float(self.rotation or 0), float(self.scale or 1))
+
+    def _built(self):
+        FloatLayout._built(self)
+        if self.scale != 1 or self.rotation: self._el.config(pvxf=self._xf())
+
+    def _prop_changed(self, name, value):
+        if name in ("scale", "rotation") and self._w is not None: self._el.config(pvxf=self._xf())
+        else: FloatLayout._prop_changed(self, name, value)
+
+
+class ScatterPlane(Scatter): pass
+
+
+# ===================================================================== Accordion
+class AccordionItem(BoxLayout):
+    title = StringProperty("")
+    collapse = BooleanProperty(True)
+    content = ObjectProperty(None)
+
+    def __init__(self, **kw):
+        self.__dict__["_acc"] = None
+        BoxLayout.__init__(self, orientation="vertical")
+        self.__dict__["_hdr"] = Button(text="", size_hint_y=None, height=44)
+        self.__dict__["_body"] = FloatLayout(size_hint_y=None, height=0)
+        BoxLayout.add_widget(self, self._hdr)
+        self._hdr.bind(on_release=lambda *a: self._toggle())
+        self._apply_kw(kw)
+        self._hdr.text = self.title
+        self._sync()
+
+    def add_widget(self, w, *a, **k):
+        if w is self._hdr or w is self._body: return BoxLayout.add_widget(self, w, *a, **k)
+        self.content = w
+        self._body.clear_widgets(); self._body.add_widget(w)
+
+    def _toggle(self): self.collapse = not self.collapse
+
+    def _sync(self):
+        if self.collapse:
+            if self._body in self._kids: BoxLayout.remove_widget(self, self._body)
+            self.size_hint_y = None; self.height = 44
+        else:
+            self._body.size_hint_y = 1
+            if self._body not in self._kids: BoxLayout.add_widget(self, self._body)
+            self.size_hint_y = 1
+
+    def _prop_changed(self, name, value):
+        if name == "title": self._hdr.text = value
+        elif name == "collapse":
+            if not value and self._acc is not None:
+                for it in self._acc._items:
+                    if it is not self and not it.collapse: it.collapse = True
+            self._sync()
+        else: BoxLayout._prop_changed(self, name, value)
+
+
+class Accordion(BoxLayout):
+    min_space = NumericProperty(44)
+    def __init__(self, **kw):
+        self.__dict__["_items"] = []
+        BoxLayout.__init__(self, orientation=kw.pop("orientation", "horizontal"))
+        self._apply_kw(kw)
+    def add_widget(self, w, *a, **k):
+        if isinstance(w, AccordionItem): self._items.append(w); w._acc = self
+        BoxLayout.add_widget(self, w, *a, **k)
+    def remove_widget(self, w):
+        if w in self._items: self._items.remove(w)
+        BoxLayout.remove_widget(self, w)
+
+
+# ===================================================================== Bubble / PageLayout / action bar
+class Bubble(BoxLayout):
+    arrow_pos = Property("bottom_mid")
+    show_arrow = BooleanProperty(True)
+    orientation = Property("horizontal")
+
+class BubbleButton(Button): pass
+
+
+class PageLayout(Carousel):
+    page = AliasProperty(lambda s: int(s.index), lambda s, v: setattr(s, "index", v))
+    border = NumericProperty(0)
+
+
+class ActionBar(BoxLayout):
+    def __init__(self, **kw):
+        BoxLayout.__init__(self, orientation="horizontal", size_hint_y=None, height=48)
+        self._apply_kw(kw)
+
+class ActionView(BoxLayout):
+    use_separator = BooleanProperty(False)
+    overflow_group = ObjectProperty(None)
+
+class ActionPrevious(Label):
+    title = StringProperty("")
+    with_previous = BooleanProperty(True)
+    app_icon = StringProperty("")
+    previous_image = StringProperty("")
+    def _prop_changed(self, name, value):
+        if name == "title": self.text = value
+        else: Label._prop_changed(self, name, value)
+
+class ActionButton(Button):
+    icon = StringProperty("")
+    important = BooleanProperty(False)
+class ActionToggleButton(ToggleButton): pass
+class ActionSeparator(Widget): pass
+class ActionGroup(Button):
+    mode = Property("normal")
+    dropdown_width = NumericProperty(0)
+class ActionOverflow(Widget): pass
+class ActionItem(Widget): pass
+class ActionCheck(Button): pass
+class Splitter(BoxLayout): pass
+class CodeInput(TextInput):
+    lexer = ObjectProperty(None)
+
+
+# ===================================================================== color picker
+class ColorPicker(BoxLayout):
+    color = ListProperty([1, 1, 1, 1])
+    hex_color = StringProperty("#ffffffff")
+
+    def __init__(self, **kw):
+        BoxLayout.__init__(self, orientation="vertical", spacing=6, padding=6)
+        from kivy_gfx import Color, Rectangle
+        self.__dict__["_lock"] = False
+        self._prev = Label(text="", size_hint_y=.35)
+        with self._prev.canvas.before:
+            self._pcol = Color(1, 1, 1, 1)
+            Rectangle(pos=self._prev.pos, size=self._prev.size)
+        self.__dict__["_sl"] = []
+        BoxLayout.add_widget(self, self._prev)
+        for name in ("R", "G", "B", "A"):
+            row = BoxLayout(size_hint_y=None, height=40)
+            row.add_widget(Label(text=name, size_hint_x=None, width=24))
+            sl = Slider(min=0, max=255, value=255)
+            sl.bind(value=self._moved)
+            row.add_widget(sl); self._sl.append(sl)
+            BoxLayout.add_widget(self, row)
+        self._apply_kw(kw)
+
+    def _moved(self, *a):
+        if self._lock: return
+        self._lock = True
+        try: self.color = [s.value / 255.0 for s in self._sl]
+        finally: self._lock = False
+
+    def _prop_changed(self, name, value):
+        if name == "color":
+            c = list(value) + [1] * (4 - len(value))
+            self._pcol.rgba = c
+            self.hex_color = "#" + "".join("%02x" % int(round(max(0, min(1, x)) * 255)) for x in c)
+            if not self._lock:
+                self._lock = True
+                try:
+                    for s, v in zip(self._sl, c): s.value = v * 255
+                finally: self._lock = False
+        else: BoxLayout._prop_changed(self, name, value)
+
+
+from kivyshim import Slider
+
+
+# ===================================================================== file chooser (list view)
+class FileChooserListView(BoxLayout):
+    __events__ = ("on_submit", "on_entry_added", "on_subentry_to_entry")
+    path = StringProperty("/")
+    rootpath = Property(None)
+    filters = ListProperty([])
+    multiselect = BooleanProperty(False)
+    dirselect = BooleanProperty(False)
+    selection = ListProperty([])
+    show_hidden = BooleanProperty(False)
+    file_system = ObjectProperty(None)
+
+    def __init__(self, **kw):
+        import os
+        BoxLayout.__init__(self, orientation="vertical")
+        self.path = os.getcwd()
+        self.__dict__["_head"] = Label(text="", size_hint_y=None, height=36, halign="left")
+        self.__dict__["_sv"] = ScrollView(do_scroll_x=False)
+        self.__dict__["_box"] = BoxLayout(orientation="vertical", size_hint_y=None, height=0)
+        self._sv.add_widget(self._box)
+        BoxLayout.add_widget(self, self._head); BoxLayout.add_widget(self, self._sv)
+        self._apply_kw(kw)
+        self._fill()
+
+    def on_submit(self, *a): pass
+    def on_entry_added(self, *a): pass
+    def on_subentry_to_entry(self, *a): pass
+
+    def _entries(self):
+        import os, fnmatch
+        try: names = sorted(os.listdir(self.path), key=lambda n: (not os.path.isdir(os.path.join(self.path, n)), n.lower()))
+        except Exception: names = []
+        out = []
+        for n in names:
+            if n.startswith(".") and not self.show_hidden: continue
+            full = os.path.join(self.path, n)
+            isdir = os.path.isdir(full)
+            if not isdir and self.filters and not any(fnmatch.fnmatch(n, f) for f in self.filters if isinstance(f, str)): continue
+            out.append((n, full, isdir))
+        return out
+
+    def _fill(self):
+        import os
+        self._head.text = self.path
+        self._box.clear_widgets()
+        rows = []
+        if os.path.dirname(self.path.rstrip("/")) or self.path != "/": rows.append(("..", os.path.dirname(self.path.rstrip("/")) or "/", True))
+        rows += self._entries()
+        for n, full, isdir in rows:
+            b = Button(text=("[D] " if isdir else "") + n, size_hint_y=None, height=40, halign="left")
+            b.bind(on_release=lambda inst, f=full, d=isdir: self._pick(f, d))
+            self._box.add_widget(b)
+        self._box.height = 40 * len(rows)
+
+    def _pick(self, full, isdir):
+        if isdir and not self.dirselect:
+            self.path = full; self.selection = []; return
+        if self.multiselect: self.selection = list(self.selection) + [full]
+        else: self.selection = [full]
+        self.dispatch("on_submit", self.selection, None)
+
+    def _prop_changed(self, name, value):
+        if name in ("path", "filters", "show_hidden") and self.__dict__.get("_box") is not None: self._fill()
+        else: BoxLayout._prop_changed(self, name, value)
+
+    def open_entry(self, entry): pass
+
+
+class FileChooserIconView(FileChooserListView): pass
+class FileChooser(FileChooserListView): pass
+
+
+# ===================================================================== things that need native support (clear messages)
+class _Unsupported(Widget):
+    _what = "this widget"
+    def __init__(self, **kw):
+        Widget.__init__(self)
+        print("[kivy] %s is not supported in this editor yet" % self._what)
+        self._apply_kw(kw)
+    def _make(self, master):
+        return tk.Label(master, text="[%s: not supported]" % self._what, fg="#888888", bg=_CLEAR, bd=0)
+
+class Video(_Unsupported):
+    _what = "Video"; source = StringProperty(""); state = Property("stop"); volume = NumericProperty(1); options = DictProperty({})
+    play = BooleanProperty(False); eos = BooleanProperty(False)
+class VideoPlayer(_Unsupported):
+    _what = "VideoPlayer"; source = StringProperty(""); state = Property("stop"); volume = NumericProperty(1)
+class Camera(_Unsupported):
+    _what = "Camera"; play = BooleanProperty(False); index = NumericProperty(0); resolution = ListProperty([640, 480])
