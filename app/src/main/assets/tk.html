@@ -245,7 +245,10 @@ function cfg(w,o){
   case 'relief':case 'bd':rel(w);break;
   case 'width':case 'height':case 'length':size(w);break;
   case 'anchor':{w.an=v;alignFx(w);break}
-  case 'pvscroll':{s.overflowY=/y/.test(v)?'auto':'hidden';s.overflowX=/x/.test(v)?'auto':'hidden';s.minHeight='0';s.minWidth='0';s.webkitOverflowScrolling='touch';break}
+  case 'pvscroll':{s.overflowY=/y/.test(v)?'auto':'hidden';s.overflowX=/x/.test(v)?'auto':'hidden';s.minHeight='0';s.minWidth='0';s.webkitOverflowScrolling='touch';
+   if(!w.pvs){w.pvs=1;let raf=0;e.addEventListener('scroll',()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const mx=e.scrollWidth-e.clientWidth,my=e.scrollHeight-e.clientHeight;send({t:'pv',k:'scroll',id:w.id,x:mx>0?e.scrollLeft/mx:0,y:my>0?1-e.scrollTop/my:1})})},{passive:true})}break}
+  case 'pvhtml':{if(w.tx){w.tx.innerHTML=v;refLab(w);if(!w.pvr){w.pvr=1;e.addEventListener('click',ev=>{const r=ev.target.closest&&ev.target.closest('[data-ref]');if(r)send({t:'pv',k:'ref',id:w.id,ref:r.getAttribute('data-ref')})})}}break}
+  case 'pvxf':{s.transform=v||'';s.transformOrigin='50% 50%';break}
   case 'pvw':{s.width=v?v+'px':'';s.maxWidth='100%';break}
   case 'pvh':{s.height=v?v+'px':'';break}
   case 'pvtouch':{s.touchAction=v==='x'?'pan-y':v==='y'?'pan-x':'none';break}
@@ -368,9 +371,10 @@ function layPack(box,L){let cav=box;
   cav=rs})}
 function layGrid(p,box,L){let mr=0,mc=0;
  L.forEach(w=>{const o=w.mo;mr=Math.max(mr,(o.row||0)+(o.rowspan||1));mc=Math.max(mc,(o.column||0)+(o.columnspan||1))});
+ for(const k in p.cc)if(p.cc[k]>0)mc=Math.max(mc,+k+1);for(const k in p.rc)if(p.rc[k]>0)mr=Math.max(mr,+k+1);
  const wt=(k,i)=>{const m=(k==='c'?p.cc:p.rc);return m[i]!=null?m[i]:(p.ca[k]?p.ca[k]:0)};
- const col=i=>{const v=wt('c',i),mn=p.cm.c[i]||0;return v>0?'minmax('+mn+'px,'+v+'fr)':(mn?'minmax('+mn+'px,auto)':'auto')},
-  row=i=>{const v=wt('r',i),mn=p.cm.r[i]||0;return v>0?'minmax('+mn+'px,'+v+'fr)':(mn?'minmax('+mn+'px,auto)':'auto')},s=box.style;
+ const col=i=>{const v=wt('c',i),mn=p.cm.c[i]||0;if(v<0)return mn+'px';return v>0?'minmax('+mn+'px,'+v+'fr)':(mn?'minmax('+mn+'px,auto)':'auto')},
+  row=i=>{const v=wt('r',i),mn=p.cm.r[i]||0;if(v<0)return mn+'px';return v>0?'minmax('+mn+'px,'+v+'fr)':(mn?'minmax('+mn+'px,auto)':'auto')},s=box.style;
  s.display='grid';
  s.gridTemplateColumns=Array.from({length:mc},(_,i)=>col(i)).join(' ');
  s.gridTemplateRows=Array.from({length:mr},(_,i)=>row(i)).join(' ');
@@ -670,6 +674,11 @@ const OPS={new:mk,
  litem:(id,i,o)=>{const w=W[id];if(w){w.ic[i]=Object.assign(w.ic[i]||{},o);lbDraw(w)}},
  lsee:(id,i)=>{const w=W[id];if(w&&w.el.children[i])w.el.children[i].scrollIntoView({block:'nearest'})},
  foc:id=>{const w=W[id];w&&(w.in||w.el).focus()},
+ pvaud:(id,act,a,b)=>{const A=(window.PVA=window.PVA||{});let o=A[id];
+  if(act==='load'){if(o){o.pause()}o=A[id]=new Audio(a);o.preload='auto';o.addEventListener('loadedmetadata',()=>send({t:'pv',k:'aud',id:id,dur:o.duration||0}));o.addEventListener('ended',()=>send({t:'pv',k:'aud',id:id,ended:1}));return}
+  if(!o)return;
+  if(act==='play'){o.play().catch(()=>{})}else if(act==='stop'){o.pause();try{o.currentTime=0}catch(e){}}else if(act==='pause'){o.pause()}
+  else if(act==='seek'){try{o.currentTime=a}catch(e){}}else if(act==='vol'){o.volume=Math.max(0,Math.min(1,a))}else if(act==='loop'){o.loop=!!a}else if(act==='rate'){o.playbackRate=a}else if(act==='free'){o.pause();delete A[id]}},
  pvsc:(id,x,y)=>{setTimeout(()=>{const w=W[id];if(!w)return;const e=w.el;if(x!=null)e.scrollLeft=x*(e.scrollWidth-e.clientWidth);if(y!=null)e.scrollTop=(1-y)*(e.scrollHeight-e.clientHeight)},40)},
  pvsee:(id,tid)=>{setTimeout(()=>{const w=W[tid];w&&w.el.scrollIntoView({block:'nearest'})},40)},
  bind:(id,cat)=>{const w=W[id];w&&bindCat(w,cat)},
