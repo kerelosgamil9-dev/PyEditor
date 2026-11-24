@@ -245,6 +245,10 @@ function cfg(w,o){
   case 'relief':case 'bd':rel(w);break;
   case 'width':case 'height':case 'length':size(w);break;
   case 'anchor':{w.an=v;alignFx(w);break}
+  case 'pvscroll':{s.overflowY=/y/.test(v)?'auto':'hidden';s.overflowX=/x/.test(v)?'auto':'hidden';s.minHeight='0';s.minWidth='0';s.webkitOverflowScrolling='touch';break}
+  case 'pvw':{s.width=v?v+'px':'';s.maxWidth='100%';break}
+  case 'pvh':{s.height=v?v+'px':'';break}
+  case 'pvtouch':{s.touchAction=v==='x'?'pan-y':v==='y'?'pan-x':'none';break}
   case 'justify':s.textAlign=v;break;
   case 'padx':case 'pady':{const px=o.padx!=null?o.padx:w.o.padx,py=o.pady!=null?o.pady:w.o.pady;s.padding=(py||0)+'px '+(px||0)+'px';break}
   case 'pad':case 'padding':{const a=pp(v);s.padding=a[0]+'px '+a[1]+'px';break}
@@ -666,6 +670,8 @@ const OPS={new:mk,
  litem:(id,i,o)=>{const w=W[id];if(w){w.ic[i]=Object.assign(w.ic[i]||{},o);lbDraw(w)}},
  lsee:(id,i)=>{const w=W[id];if(w&&w.el.children[i])w.el.children[i].scrollIntoView({block:'nearest'})},
  foc:id=>{const w=W[id];w&&(w.in||w.el).focus()},
+ pvsc:(id,x,y)=>{setTimeout(()=>{const w=W[id];if(!w)return;const e=w.el;if(x!=null)e.scrollLeft=x*(e.scrollWidth-e.clientWidth);if(y!=null)e.scrollTop=(1-y)*(e.scrollHeight-e.clientHeight)},40)},
+ pvsee:(id,tid)=>{setTimeout(()=>{const w=W[tid];w&&w.el.scrollIntoView({block:'nearest'})},40)},
  bind:(id,cat)=>{const w=W[id];w&&bindCat(w,cat)},
  cv:cvop,dlg:dlg,
  q:(req,op,args)=>{pendQ.push([req,op,args])},
