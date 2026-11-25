@@ -14,6 +14,101 @@ jobs:
         with: { gradle-version: 8.14.3 }
       - name: Accept Android SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      # ---------------------------------------------------------------------------------------------
+      # REAL tkinter: build Tcl/Tk (AndroWish SDL port) + SDL2 + the real _tkinter module for arm64.
+      # The result is cached, so only the first run (or a change of this file) takes the extra minutes.
+      # ---------------------------------------------------------------------------------------------
+      - name: Cache native Tk
+        id: tkcache
+        uses: actions/cache@v4
+        with:
+          path: ~/tk-native
+          key: tk-native-v1-${{ hashFiles('.github/workflows/build.yml') }}
+      - name: Build real Tcl/Tk + _tkinter (arm64)
+        if: steps.tkcache.outputs.cache-hit != 'true'
+        run: |
+          set -eo pipefail
+          W=$HOME/tk-work; O=$HOME/tk-native
+          rm -rf "$W" "$O"; mkdir -p "$W" "$O/jniLibs/arm64-v8a" "$O/assets/realpy" "$O/java"
+          cd "$W"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tcl bc zip
+          curl -fSL -o aw.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
+          echo "4ecbc23193cb00b9fc34c0942e2327f0b6badbe587ab574b492780994707683d  aw.tar.gz" | sha256sum -c -
+          tar xzf aw.tar.gz
+          P="$W/androwish-c48f047f5b"
+          cd "$P"
+          export PATH="$ANDROID_NDK_HOME:$PATH"
+          CF="-Wno-error=incompatible-function-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=deprecated-non-prototype -Wno-error=macro-redefined"
+          ndk-build -k -j4 APP_ABI=arm64-v8a APP_PLATFORM=android-24 APP_MODULES="tcl tk SDL2 freetype" APP_CFLAGS="$CF" APP_CPPFLAGS="$CF" > "$W/ndk.log" 2>&1 || true
+          for l in libtcl libtk libSDL2 libfreetype; do
+            test -f "libs/arm64-v8a/$l.so" || { echo "MISSING $l.so"; tail -80 "$W/ndk.log"; exit 1; }
+            cp "libs/arm64-v8a/$l.so" "$O/jniLibs/arm64-v8a/"
+          done
+          CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+
+          # libmain.so: SDL calls SDL_main() on its thread; we hand over to TkActivity.runPython() (Kotlin -> Python)
+          cat > "$W/pyvora_main.c" <<'EOC'
+          #include <jni.h>
+          #include <SDL.h>
+          #include <android/log.h>
+          int SDL_main(int argc, char **argv)
+          {
+              JNIEnv *env = (JNIEnv *) SDL_AndroidGetJNIEnv();
+              jobject act = (jobject) SDL_AndroidGetActivity();
+              jclass cls = (*env)->GetObjectClass(env, act);
+              jmethodID mid = (*env)->GetMethodID(env, cls, "runPython", "()I");
+              int rc = 1;
+              if (!mid) {
+                  __android_log_print(ANDROID_LOG_ERROR, "PyvoraTk", "runPython() not found");
+                  return 1;
+              }
+              rc = (*env)->CallIntMethod(env, act, mid);
+              if ((*env)->ExceptionCheck(env)) {
+                  (*env)->ExceptionDescribe(env);
+                  (*env)->ExceptionClear(env);
+              }
+              return rc;
+          }
+          EOC
+          "$CC" -shared -fPIC -O2 -I"$P/jni/SDL2/include" -o "$O/jniLibs/arm64-v8a/libmain.so" "$W/pyvora_main.c" -L"$P/libs/arm64-v8a" -lSDL2 -llog
+
+          # Python 3.11 headers/libpython from Chaquopy + CPython sources for _tkinter.c
+          cd "$W"
+          V=3.11.14-0
+          curl -fSL -o chaquo.zip "https://repo1.maven.org/maven2/com/chaquo/python/target/$V/target-$V-arm64-v8a.zip"
+          mkdir -p chaquo && unzip -q chaquo.zip -d chaquo
+          curl -fSL -o cpython.tgz https://github.com/python/cpython/archive/refs/tags/v3.11.14.tar.gz
+          mkdir -p cpython && tar xzf cpython.tgz -C cpython --strip-components=1
+          PYH=$(dirname "$(find chaquo -name pyconfig.h | head -1)")
+          PYLIB=$(find chaquo -name "libpython3.11*.so" | head -1)
+          TCLH=$(dirname "$(find "$P/jni/tcl" -name tcl.h | head -1)")
+          TKH=$(dirname "$(find "$P/jni/sdl2tk" -name tk.h | head -1)")
+          INC="-I$PYH -I$TCLH -I$TKH"
+          for d in $(find "$P/jni/sdl2tk" -type d -name X11); do INC="$INC -I$(dirname "$d")"; done
+          INC="$INC -I$P/jni/sdl2tk/sdl -I$P/jni/SDL2/include"
+          "$CC" -shared -fPIC -O2 -DWITH_APPINIT -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types \
+            $INC cpython/Modules/_tkinter.c cpython/Modules/tkappinit.c \
+            -o "$O/jniLibs/arm64-v8a/lib_tkinter_py.so" \
+            -L"$P/libs/arm64-v8a" -L"$(dirname "$PYLIB")" -ltcl -ltk -lpython3.11 -llog -lm -ldl
+
+          # script libraries + the real tkinter / turtle (pure python)
+          cp -r "$P/jni/tcl/library" "$O/assets/tcl_library"
+          cp -r "$P/jni/sdl2tk/library" "$O/assets/tk_library"
+          rm -rf "$O/assets/tk_library/demos" "$O/assets/tcl_library/tcltest"
+          cp -r cpython/Lib/tkinter "$O/assets/realpy/tkinter"
+          rm -rf "$O/assets/realpy/tkinter/test"
+          cp cpython/Lib/turtle.py "$O/assets/realpy/"
+
+          # SDL's Java side (unchanged AndroWish copy of SDL 2.0.6's SDLActivity)
+          cp "$P/src/org/libsdl/app/SDLActivity.java" "$P/shortcut26/src/org/libsdl/app/FocusHighlight_API26.java" "$O/java/"
+          du -sh "$O"/*; ls -la "$O/jniLibs/arm64-v8a"
+      - name: Add native Tk to the app
+        run: |
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets app/src/main/java/org/libsdl/app
+          cp ~/tk-native/jniLibs/arm64-v8a/*.so app/src/main/jniLibs/arm64-v8a/
+          cp -r ~/tk-native/assets/* app/src/main/assets/
+          cp ~/tk-native/java/*.java app/src/main/java/org/libsdl/app/
       # Optional: sign with your OWN key (needed for Google Play). Without these secrets the repo keystore is used.
       - name: Release key (optional)
         env:
