@@ -226,7 +226,7 @@ class TkActivity : SDLActivity() {
         } catch (e: Throwable) {
             try { outFile.appendText("\n$e\n") } catch (x: Exception) { }
         }
-        showOutput()
+        if (rc != 0) showOutput()      // errors are shown after the screen closes; normal output only via the Output button
         return rc
     }
 
