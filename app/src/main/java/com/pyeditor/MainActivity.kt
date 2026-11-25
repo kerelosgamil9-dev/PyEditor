@@ -105,7 +105,10 @@ class MainActivity : Activity() {
         // ---------------------------------------------------------------- Python
         @JavascriptInterface
         fun run(code: String, name: String) {
-            val i = Intent(this@MainActivity, ConsoleActivity::class.java).putExtra("name", name)
+            // scripts that use tkinter run on the REAL Tcl/Tk (TkActivity) when this device supports it
+            val usesTk = Regex("""(?m)^\s*(import|from)\s+[Tt]kinter\b""").containsMatchIn(code)
+            val target = if (usesTk && TkActivity.supported(this@MainActivity)) TkActivity::class.java else ConsoleActivity::class.java
+            val i = Intent(this@MainActivity, target).putExtra("name", name)
             // the code goes through a file, an Intent can only carry about 1 MB
             try {
                 val f = File(cacheDir, "run_" + System.currentTimeMillis() + ".py")
