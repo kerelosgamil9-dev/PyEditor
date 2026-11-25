@@ -42,6 +42,13 @@ def _patch_scaling(default=2.0):
                     pass
         except Exception:
             pass
+        # a phone has no desktop to float windows on: the main window fills the screen (set PYVORA_TK_FULLSCREEN=0 to disable,
+        # or call root.attributes("-fullscreen", False) in your script)
+        if os.environ.get("PYVORA_TK_FULLSCREEN", "1") != "0":
+            try:
+                self.attributes("-fullscreen", True)
+            except Exception:
+                pass
 
     tkinter.Tk.__init__ = __init__
 
