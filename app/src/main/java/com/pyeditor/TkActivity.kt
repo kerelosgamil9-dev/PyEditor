@@ -7,6 +7,8 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.view.KeyEvent
+import android.window.OnBackInvokedDispatcher
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -57,6 +59,18 @@ class TkActivity : SDLActivity() {
         }
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         super.onCreate(savedInstanceState)
+        // Back button / gesture closes the Tk screen (a fullscreen Tk window has no title bar to close it with)
+        if (Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { finish() }
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP) finish()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun runtimeDir() = File(filesDir, "tkrt")
