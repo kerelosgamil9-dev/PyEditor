@@ -18,13 +18,15 @@ jobs:
           set -eo pipefail
           mkdir -p "$W" "$OUT/jniLibs/arm64-v8a" "$OUT/java/org/pyvora/kv" "$OUT/logs" "$OUT/assets"
           cd "$W"
-          curl -fSL -o sdl.tgz https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o sdl.tgz https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
           sha256sum sdl.tgz
           tar xzf sdl.tgz
-          curl -fSL -o kivy.tgz https://github.com/kivy/kivy/archive/refs/tags/2.3.1.tar.gz
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o kivy.tgz https://github.com/kivy/kivy/archive/refs/tags/2.3.1.tar.gz
           mkdir -p kivy && tar xzf kivy.tgz -C kivy --strip-components=1
           V=3.11.14-0
-          curl -fSL -o chaquo.zip "https://repo1.maven.org/maven2/com/chaquo/python/target/$V/target-$V-arm64-v8a.zip"
+          U="com/chaquo/python/target/$V/target-$V-arm64-v8a.zip"
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o chaquo.zip "https://repo1.maven.org/maven2/$U" \
+            || curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o chaquo.zip "https://repo.maven.apache.org/maven2/$U"
           mkdir -p chaquo && unzip -q chaquo.zip -d chaquo
           find chaquo -name pyconfig.h
           find chaquo -name 'libpython3.11*.so'
