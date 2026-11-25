@@ -82,6 +82,14 @@ def _patch_tk(scale=5.0):
                     pass
         except Exception:
             pass
+        # buttons: the default inner padding is given in millimetres, which at this scaling made them very tall
+        try:
+            self.option_add("*Button.padY", "0.6m")
+            self.option_add("*Menubutton.padY", "0.6m")
+            from tkinter import ttk
+            ttk.Style(self).configure("TButton", padding=(10, 4))
+        except Exception:
+            pass
         # pop-up messages: Tk wraps their text at "3 inches", which at this scaling is wider than the whole screen,
         # so the dialog grew sideways.  Wrap at a fraction of the screen width instead (PYVORA_TK_WRAP, default 0.6)
         try:
