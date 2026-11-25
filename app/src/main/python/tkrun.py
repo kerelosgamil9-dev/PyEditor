@@ -48,7 +48,7 @@ def _keyboard(root):
     root.bind_all("<ButtonRelease-1>", on_click, add="+")
 
 
-def _patch_tk(scale=3.0):
+def _patch_tk(scale=4.0):
     """phone-friendly defaults for every Tk() window"""
     import tkinter
     try:
