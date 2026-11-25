@@ -36,5 +36,14 @@
             android:process=":run"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode"/>
+
+        <!-- real tkinter (Tcl/Tk on SDL) in its own process -->
+        <activity android:name=".TkActivity" android:exported="false"
+            android:process=":tk"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode|touchscreen|mnc|mcc"/>
+        <activity android:name=".TkOutputActivity" android:exported="false"/>
     </application>
 </manifest>
