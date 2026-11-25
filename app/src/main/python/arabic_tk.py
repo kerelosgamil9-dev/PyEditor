@@ -5,7 +5,9 @@ label / button / menu entry / canvas text / window title / dialog message go thr
 Works without any pip package (the joining forms come from Python's own unicodedata table).
 
 Use it by hand too:   import arabic_tk;  arabic_tk.shape("مرحبا")
-Not covered: text typed inside Entry / Text widgets (Tk limitation) and Treeview cells.
+Entry fields (also ttk.Entry / Combobox and the built-in input dialogs) join the letters while you type; entry.get() still
+returns the normal logical text.  Typing works at the END of the field (the cursor is kept there).
+Not covered yet: Text widgets and Treeview cells.
 """
 import os
 import unicodedata
@@ -201,6 +203,124 @@ def _shadow(widget, name):
     return sh
 
 
+def _install_entry():
+    """Entry fields: keep the typed (logical) text in Python, show the shaped text in the field"""
+    import tkinter
+    from tkinter import ttk
+
+    o_get, o_insert, o_delete = tkinter.Entry.get, tkinter.Entry.insert, tkinter.Entry.delete
+    seen = set()
+
+    def to_logical(d):
+        return bidi(unicodedata.normalize("NFKC", d)) if has_rtl(d) else d
+
+    def chars(t):
+        return unicodedata.normalize("NFKC", t) if has_rtl(t) else t
+
+    def display(w, logical):
+        disp = shape(logical)
+        o_delete(w, 0, "end")
+        o_insert(w, 0, disp)
+        try:
+            w.icursor("end")
+            w.configure(justify="right")
+        except Exception:
+            pass
+        w._pv = [logical, disp]
+
+    def get(self):
+        d = o_get(self)
+        st = getattr(self, "_pv", None)
+        if st is not None and st[1] == d:
+            return st[0]
+        return d
+
+    def insert(self, index, string):
+        st = getattr(self, "_pv", None)
+        if isinstance(string, str) and (has_rtl(string) or (st is not None and has_rtl(st[0]))):
+            try:
+                cur = get(self)
+                try:
+                    i = self.index(index)
+                except Exception:
+                    i = len(cur)
+                new = (string + cur) if (i <= 0 and cur) else (cur + string)
+                display(self, new)
+                return
+            except Exception:
+                pass
+        return o_insert(self, index, string)
+
+    def delete(self, first, last=None):
+        r = o_delete(self, first, last)
+        try:
+            if o_get(self) == "":
+                self._pv = ["", ""]
+        except Exception:
+            pass
+        return r
+
+    def sync_init(w):
+        try:
+            d = o_get(w)
+            st = getattr(w, "_pv", None)
+            if st is None or st[1] != d:
+                w._pv = [to_logical(d), d]
+        except Exception:
+            pass
+
+    def fix(w):
+        try:
+            if not w.winfo_exists():
+                return
+            d1 = o_get(w)
+            st = getattr(w, "_pv", None)
+            if st is None:
+                w._pv = [to_logical(d1), d1]
+                return
+            l0, d0 = st
+            if d1 == d0:
+                return
+            if len(d1) > len(d0):
+                k = 0
+                while k < len(d0) and d0[k] == d1[k]:
+                    k += 1
+                l1 = l0 + chars(d1[k:k + len(d1) - len(d0)])
+            elif len(d1) < len(d0):
+                l1 = l0[:-(len(d0) - len(d1))]
+            else:
+                l1 = to_logical(d1)
+            if has_rtl(l1) or has_rtl(l0):
+                display(w, l1)
+            else:
+                w._pv = [l1, d1]
+        except Exception:
+            pass
+
+    def attach(w):
+        try:
+            w.bindtags(("PvAr",) + tuple(w.bindtags()))
+            if id(w.tk) not in seen:
+                seen.add(id(w.tk))
+                w.bind_class("PvAr", "<KeyPress>", lambda e: e.widget.after_idle(fix, e.widget), add="+")
+                w.bind_class("PvAr", "<FocusIn>", lambda e: sync_init(e.widget), add="+")
+        except Exception:
+            pass
+
+    for cls in (tkinter.Entry, ttk.Entry):
+        orig = cls.__init__
+
+        def __init__(self, *a, _orig=orig, **k):
+            _orig(self, *a, **k)
+            attach(self)
+
+        cls.__init__ = __init__
+
+    tkinter.Entry.get = get
+    tkinter.Entry.insert = insert
+    tkinter.Entry.delete = delete
+
+
 def install():
     """patch tkinter so Arabic shows correctly everywhere text is only displayed"""
     if os.environ.get("PYVORA_TK_ARABIC", "1") == "0":
@@ -221,7 +341,7 @@ def install():
                     if isinstance(v, str) and has_rtl(v):
                         out[i + 1] = shape(v)
                 elif k == "-textvariable" and not isinstance(self, entryish):
-                    out[i + 1] = _shadow(self, v)
+                    out[i + 1] = _shadow(self, str(v))
             return tuple(out)
         except Exception:
             return res
@@ -237,3 +357,7 @@ def install():
 
     tkinter.Wm.wm_title = wm_title
     tkinter.Wm.title = wm_title
+    try:
+        _install_entry()
+    except Exception:
+        pass
