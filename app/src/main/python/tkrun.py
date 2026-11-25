@@ -30,6 +30,18 @@ def _patch_scaling(default=2.0):
             self.tk.call("tk", "scaling", scale)
         except Exception:
             pass
+        # default widget fonts (buttons, entries, menus ...) were tiny next to scaled text: give them a phone-friendly size
+        try:
+            import tkinter.font as tkfont
+            base = int(os.environ.get("PYVORA_TK_FONT", "11"))
+            for n in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont",
+                      "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont", "TkFixedFont"):
+                try:
+                    tkfont.nametofont(n, root=self).configure(size=base)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     tkinter.Tk.__init__ = __init__
 
