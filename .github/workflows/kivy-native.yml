@@ -126,6 +126,15 @@ jobs:
           export CFLAGS="-I$PYH -I$W/SDL2-2.28.5/include -fPIC -O2 -DANDROID"
           export LDFLAGS="-L$PYLIB -L$LINK -Wl,--no-as-needed -lpython3.11 -llog -landroid"
           export NDKPLATFORM=NOTNONE LIBLINK=NOTNONE USE_SDL2=1 KIVY_SDL2_PATH="$W/SDL2-2.28.5/include" KIVY_SPLIT_EXAMPLES=1
+          # On Android Kivy's setup.py does NOT run Cython by itself ("Not using cython on android"):
+          # python-for-android cythonizes first. We do the same: (1) let setup.py write the Android config files,
+          # (2) turn every .pyx into .c, (3) compile the .c files.
+          python setup.py --name > "$OUT/logs/kivy-config.log" 2>&1 || { tail -50 "$OUT/logs/kivy-config.log"; exit 1; }
+          find kivy -name 'config.pxi' -o -name 'config.h'
+          echo "pyx files: $(find kivy -name '*.pyx' | wc -l)"
+          find kivy -name '*.pyx' -print0 | xargs -0 -n1 -P4 sh -c 'cython -3 -I . "$0" || echo "CYTHON FAILED: $0"' > "$OUT/logs/cython.log" 2>&1 || true
+          grep "CYTHON FAILED" "$OUT/logs/cython.log" || echo "cython: no failures"
+          echo "c files: $(find kivy -name '*.c' | wc -l)"
           python setup.py build_ext --inplace -j4 -v > "$OUT/logs/kivy.log" 2>&1 || { tail -150 "$OUT/logs/kivy.log"; exit 1; }
           tail -5 "$OUT/logs/kivy.log"
           find kivy -name '*.so' | wc -l
