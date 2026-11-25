@@ -14,6 +14,26 @@ def _load_tkinter(libdir):
     return mod
 
 
+def _patch_scaling(default=2.0):
+    """The phone reports a very high DPI, which made Tk draw everything ~5x too big.
+    Every Tk() now starts with a sane 'pixels per point' (scripts can still change it with root.tk.call('tk','scaling',x))."""
+    import tkinter
+    try:
+        scale = float(os.environ.get("PYVORA_TK_SCALING", default))
+    except ValueError:
+        scale = default
+    orig = tkinter.Tk.__init__
+
+    def __init__(self, *a, **k):
+        orig(self, *a, **k)
+        try:
+            self.tk.call("tk", "scaling", scale)
+        except Exception:
+            pass
+
+    tkinter.Tk.__init__ = __init__
+
+
 class _Out:
     encoding = "utf-8"
     errors = "strict"
@@ -61,6 +81,7 @@ def main(codepath, name, wd, pub, libdir, tcl, tk, realpy, outfile):
         except OSError:
             pass
         _load_tkinter(libdir)
+        _patch_scaling()
         g = {"__name__": "__main__", "__file__": os.path.join(pub, name), "__builtins__": __builtins__}
         exec(compile(src, name, "exec"), g)
     except SystemExit:
