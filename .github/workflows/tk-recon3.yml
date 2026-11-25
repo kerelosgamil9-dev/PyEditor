@@ -1,0 +1,24 @@
+name: TK Recon3 (how Tk finds fonts)
+# Manual only: Actions tab -> "TK Recon3" -> Run workflow
+on: workflow_dispatch
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download source and collect the font code
+        run: |
+          set +e
+          mkdir -p $HOME/work && cd $HOME/work
+          curl -fSL -o src.tar.gz http://androwish.org/download/androwish-c48f047f5b.tar.gz
+          mkdir -p src && tar xzf src.tar.gz -C src
+          cd src/androwish-c48f047f5b/jni/sdl2tk/sdl
+          O=$HOME/work/out; mkdir -p $O
+          cp tkSDLFont.c SdlTkDecframe.c tkSDLInit.c $O/ 2>/dev/null
+          grep -nE "ttf|TTF|\.otf|fonts|opendir|readdir|getenv|FT_New_Face|/system|fontconfig|FONT" tkSDLFont.c SdlTkDecframe.c tkSDLInit.c SdlTkInt.c tkSDLWm.c tkSDL.c 2>/dev/null | cut -c1-240 > $O/font_grep.txt
+          wc -c $O/*
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tk-recon3
+          path: ~/work/out
