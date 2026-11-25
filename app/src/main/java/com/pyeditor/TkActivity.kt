@@ -7,12 +7,16 @@ import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
 import android.window.OnBackInvokedDispatcher
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -30,6 +34,16 @@ class TkActivity : SDLActivity() {
     private var codePath = ""
     private var scriptName = "main.py"
     private lateinit var outFile: File
+
+    // live output panel + top bar (✕ and Output) drawn over the Tk screen
+    private var topBarPx = 0
+    private var panel: ScrollView? = null
+    private var panelText: TextView? = null
+    private var outBtn: TextView? = null
+    private var panelOpen = false
+    private val outBuf = StringBuilder()
+    private val outLock = Any()
+    private var outPending = false
 
     companion object {
         /** true only on 64-bit devices where the native Tk libraries were packaged */
@@ -62,6 +76,7 @@ class TkActivity : SDLActivity() {
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         super.onCreate(savedInstanceState)
         keepClearOfSystemBars()
+        buildOverlay()
         // Back button / gesture closes the Tk screen (a fullscreen Tk window has no title bar to close it with)
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { finish() }
@@ -79,10 +94,83 @@ class TkActivity : SDLActivity() {
         content.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             val ime = insets.getInsets(WindowInsets.Type.ime())
-            v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, maxOf(bars.bottom, ime.bottom))
             WindowInsets.CONSUMED
         }
         content.requestApplyInsets()
+    }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun chip(label: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+        text = label
+        setTextColor(0xFFFFFFFF.toInt())
+        setBackgroundColor(color)
+        textSize = 15f
+        gravity = Gravity.CENTER
+        setPadding(dp(14), 0, dp(14), 0)
+        setOnClickListener { onClick() }
+    }
+
+    /** a thin bar in the unused top margin: ✕ closes the Tk screen, "Output" shows what the script printed */
+    private fun buildOverlay() {
+        try {
+            topBarPx = dp(44)
+            val decor = window.decorView as ViewGroup
+            val close = chip("✕", 0xCCB71C1C.toInt()) { finish() }
+            decor.addView(close, FrameLayout.LayoutParams(dp(56), dp(36), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(4); rightMargin = dp(6)
+            })
+            val tv = TextView(this).apply {
+                setTextColor(0xFF9EE6A8.toInt()); typeface = Typeface.MONOSPACE; textSize = 12f
+                setPadding(dp(8), dp(6), dp(8), dp(6)); setTextIsSelectable(true)
+            }
+            val sv = ScrollView(this).apply {
+                setBackgroundColor(0xEE0D1117.toInt()); visibility = View.GONE
+                addView(tv)
+            }
+            val h = (resources.displayMetrics.heightPixels * 0.42).toInt()
+            decor.addView(sv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h, Gravity.BOTTOM))
+            panel = sv; panelText = tv
+            val ob = chip("Output", 0xCC1F6FEB.toInt()) {
+                panelOpen = !panelOpen
+                sv.visibility = if (panelOpen) View.VISIBLE else View.GONE
+                outBtn?.text = "Output"
+                if (panelOpen) sv.post { sv.fullScroll(View.FOCUS_DOWN) }
+            }
+            decor.addView(ob, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36), Gravity.TOP or Gravity.START).apply {
+                topMargin = dp(4); leftMargin = dp(6)
+            })
+            outBtn = ob
+        } catch (e: Throwable) { }
+    }
+
+    /** called from Python for every print() while the script runs (any thread) */
+    fun appendOut(s: String) {
+        synchronized(outLock) {
+            outBuf.append(s)
+            if (outBuf.length > 60000) outBuf.delete(0, outBuf.length - 50000)
+            if (outPending) return
+            outPending = true
+        }
+        runOnUiThread { Handler(Looper.getMainLooper()).postDelayed({ flushOut() }, 80) }
+    }
+
+    private fun flushOut() {
+        val t = synchronized(outLock) { outPending = false; outBuf.toString() }
+        val tv = panelText ?: return
+        tv.text = t
+        panel?.post { panel?.fullScroll(View.FOCUS_DOWN) }
+        if (!panelOpen) outBtn?.text = "Output ●"
+    }
+
+    /** the Android keyboard follows the focus of Tk text fields (called from Python) */
+    fun showKeyboard() {
+        try { SDLActivity.showTextInput(0, 0, 1, 1, android.text.InputType.TYPE_CLASS_TEXT) } catch (e: Throwable) { }
+    }
+
+    fun hideKeyboard() {
+        runOnUiThread { try { hideTextInput() } catch (e: Throwable) { } }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -132,7 +220,7 @@ class TkActivity : SDLActivity() {
                 "main", codePath, scriptName, filesDir.absolutePath, Storage.path(this),
                 applicationInfo.nativeLibraryDir,
                 File(root, "tcl_library").absolutePath, File(root, "tk_library").absolutePath,
-                File(root, "realpy").absolutePath, outFile.absolutePath
+                File(root, "realpy").absolutePath, outFile.absolutePath, this
             )
             rc = r.toInt()
         } catch (e: Throwable) {
