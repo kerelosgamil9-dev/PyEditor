@@ -32,6 +32,9 @@ android {
 
     buildFeatures { buildConfig true }
 
+    // real Tcl/Tk (tkinter): the native .so files must sit on disk so Python can load _tkinter from them
+    packaging { jniLibs { useLegacyPackaging true } }
+
     // play : no "All files access" permission  -> allowed on Google Play, no scary permission for Play Protect
     // full : same app + "All files access"     -> old behaviour (files in the main phone storage), sideload only
     flavorDimensions "dist"
