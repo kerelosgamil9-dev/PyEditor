@@ -169,8 +169,37 @@ def shape(text):
 
 
 # ---------------------------------------------------------------------------------------------------------
-_KEYS = ("-text", "-label", "-title", "-message", "-detail")
+_KEYS = ("-text", "-label", "-title")
+_WRAPPED = ("-message", "-detail")      # pop-up messages: wrapped here, because Tk would wrap the already reversed text
+WRAP_PX = 0                              # set by tkrun (width of a pop-up message in pixels)
 _shadows = {}
+
+
+def wrap_lines(text, width, measure):
+    """greedy word wrap on the LOGICAL text; every line is shaped separately so the reading order stays right"""
+    out = []
+    for para in text.split("\n"):
+        cur = ""
+        for w in para.split(" "):
+            trial = w if not cur else cur + " " + w
+            if cur and measure(shape(trial)) > width:
+                out.append(cur)
+                cur = w
+            else:
+                cur = trial
+        out.append(cur)
+    return "\n".join(shape(l) for l in out)
+
+
+def _wrap_shape(widget, text):
+    if not WRAP_PX:
+        return shape(text)
+    try:
+        import tkinter.font as tkfont
+        f = tkfont.Font(root=widget, font="TkCaptionFont")
+        return wrap_lines(text, int(WRAP_PX * 0.92), f.measure)
+    except Exception:
+        return shape(text)
 
 
 def _shadow(widget, name):
@@ -340,6 +369,9 @@ def install():
                 if k in _KEYS:
                     if isinstance(v, str) and has_rtl(v):
                         out[i + 1] = shape(v)
+                elif k in _WRAPPED:
+                    if isinstance(v, str) and has_rtl(v):
+                        out[i + 1] = _wrap_shape(self, v)
                 elif k == "-textvariable" and not isinstance(self, entryish):
                     out[i + 1] = _shadow(self, str(v))
             return tuple(out)

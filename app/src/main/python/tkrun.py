@@ -48,7 +48,7 @@ def _keyboard(root):
     root.bind_all("<ButtonRelease-1>", on_click, add="+")
 
 
-def _patch_tk(scale=4.0):
+def _patch_tk(scale=5.0):
     """phone-friendly defaults for every Tk() window"""
     import tkinter
     try:
@@ -80,6 +80,19 @@ def _patch_tk(scale=4.0):
                         f.configure(size=base)
                 except Exception:
                     pass
+        except Exception:
+            pass
+        # pop-up messages: Tk wraps their text at "3 inches", which at this scaling is wider than the whole screen,
+        # so the dialog grew sideways.  Wrap at a fraction of the screen width instead (PYVORA_TK_WRAP, default 0.6)
+        try:
+            frac = float(os.environ.get("PYVORA_TK_WRAP", "0.6"))
+            px = int(self.winfo_screenwidth() * frac)
+            self.option_add("*Dialog.msg.wrapLength", px)
+            try:
+                import arabic_tk
+                arabic_tk.WRAP_PX = px
+            except Exception:
+                pass
         except Exception:
             pass
         # a phone has no desktop to float windows on: the main window fills the screen
