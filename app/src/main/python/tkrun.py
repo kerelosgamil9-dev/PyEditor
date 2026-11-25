@@ -48,7 +48,7 @@ def _keyboard(root):
     root.bind_all("<ButtonRelease-1>", on_click, add="+")
 
 
-def _patch_tk(scale=2.0):
+def _patch_tk(scale=3.0):
     """phone-friendly defaults for every Tk() window"""
     import tkinter
     try:
@@ -67,11 +67,17 @@ def _patch_tk(scale=2.0):
         # default widget fonts (also used by the built-in dialogs): big enough for a finger
         try:
             import tkinter.font as tkfont
-            base = int(os.environ.get("PYVORA_TK_FONT", "14"))
+            base = int(os.environ.get("PYVORA_TK_FONT", "12"))
+            fam = os.environ.get("PYVORA_TK_FAMILY", "Cairo")      # your own font from assets/tkfonts, if present
+            have = fam in tkfont.families(root=self)
             for n in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont",
                       "TkSmallCaptionFont", "TkIconFont", "TkTooltipFont", "TkFixedFont"):
                 try:
-                    tkfont.nametofont(n, root=self).configure(size=base)
+                    f = tkfont.nametofont(n, root=self)
+                    if have and n != "TkFixedFont":
+                        f.configure(family=fam, size=base)
+                    else:
+                        f.configure(size=base)
                 except Exception:
                     pass
         except Exception:
