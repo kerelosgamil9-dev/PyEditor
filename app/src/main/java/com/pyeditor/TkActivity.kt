@@ -192,6 +192,8 @@ class TkActivity : SDLActivity() {
         root.deleteRecursively()
         root.mkdirs()
         for (d in listOf("tcl_library", "tk_library", "realpy")) copyAsset(d, File(root, d))
+        // your own fonts (e.g. Cairo): app/src/main/assets/tkfonts/*.ttf -> next to Tk's built-in fonts
+        copyAsset("tkfonts", File(root, "tk_library/fonts"))
         stamp.writeText(ver)
     }
 
