@@ -67,7 +67,7 @@ def _patch_tk(scale=5.0):
         # default widget fonts (also used by the built-in dialogs): big enough for a finger
         try:
             import tkinter.font as tkfont
-            base = int(os.environ.get("PYVORA_TK_FONT", "12"))
+            base = int(os.environ.get("PYVORA_TK_FONT", "10"))      # default text/buttons size (points at scaling 5 -> ~50px)
             fam = os.environ.get("PYVORA_TK_FAMILY", "Cairo")      # your own font from assets/tkfonts, if present
             have = fam in tkfont.families(root=self)
             for n in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont",
