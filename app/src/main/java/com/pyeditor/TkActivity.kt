@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowInsets
 import android.window.OnBackInvokedDispatcher
 import android.view.ViewGroup
 import android.widget.Button
@@ -59,10 +61,28 @@ class TkActivity : SDLActivity() {
         }
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
         super.onCreate(savedInstanceState)
+        keepClearOfSystemBars()
         // Back button / gesture closes the Tk screen (a fullscreen Tk window has no title bar to close it with)
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { finish() }
         }
+    }
+
+    /**
+     * Android 15+ draws apps edge-to-edge, so the top of the Tk screen ended up under the status bar / camera cut-out
+     * (untouchable). This keeps the drawing surface inside the safe area (and above the keyboard when it is open).
+     */
+    private fun keepClearOfSystemBars() {
+        if (Build.VERSION.SDK_INT < 30) return
+        val content = findViewById<View>(android.R.id.content) ?: return
+        content.setBackgroundColor(0xFF000000.toInt())
+        content.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            val ime = insets.getInsets(WindowInsets.Type.ime())
+            v.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            WindowInsets.CONSUMED
+        }
+        content.requestApplyInsets()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
