@@ -129,7 +129,7 @@ jobs:
           # On Android Kivy's setup.py does NOT run Cython by itself ("Not using cython on android"):
           # python-for-android cythonizes first. We do the same: (1) let setup.py write the Android config files,
           # (2) turn every .pyx into .c, (3) compile the .c files.
-          python setup.py --name > "$OUT/logs/kivy-config.log" 2>&1 || { tail -50 "$OUT/logs/kivy-config.log"; exit 1; }
+          python setup.py build_ext --help > "$OUT/logs/kivy-config.log" 2>&1 || { tail -50 "$OUT/logs/kivy-config.log"; exit 1; }
           find kivy -name 'config.pxi' -o -name 'config.h'
           echo "pyx files: $(find kivy -name '*.pyx' | wc -l)"
           find kivy -name '*.pyx' -print0 | xargs -0 -n1 -P4 sh -c 'cython -3 -I . "$0" || echo "CYTHON FAILED: $0"' > "$OUT/logs/cython.log" 2>&1 || true
