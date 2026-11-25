@@ -37,14 +37,23 @@ jobs:
           # new Java package + new library names: no clash with the AndroWish SDL used by tkinter
           grep -rlE 'org_libsdl_app|org/libsdl/app|org\.libsdl\.app' . | xargs sed -i \
             -e 's/org_libsdl_app/org_pyvora_kv/g' -e 's#org/libsdl/app#org/pyvora/kv#g' -e 's/org\.libsdl\.app/org.pyvora.kv/g'
-          sed -i -E \
-            -e '/LOCAL_MODULE_FILENAME/d' \
-            -e 's/^LOCAL_MODULE[[:space:]]*:=[[:space:]]*SDL2[[:space:]]*$/LOCAL_MODULE := SDL2kv/' \
-            -e 's/^LOCAL_MODULE[[:space:]]*:=[[:space:]]*(lib)?hidapi[[:space:]]*$/LOCAL_MODULE := kvhidapi/' Android.mk
-          grep -n "LOCAL_MODULE" Android.mk
+          echo "== Android.mk BEFORE ==" | tee "$OUT/logs/sdl.log"
+          grep -n "LOCAL_MODULE\|BUILD_\|CLEAR_VARS" Android.mk | tee -a "$OUT/logs/sdl.log"
+          python - <<'EOP'
+          import re
+          s = open("Android.mk", encoding="utf-8").read()
+          # we only need the shared libraries: drop the static one (it chained onto the shared block and NDK 27 rejected it)
+          s = re.sub(r"(?s)LOCAL_MODULE\s*:=\s*SDL2_static.*?include\s+\$\(BUILD_STATIC_LIBRARY\)", "", s)
+          s = re.sub(r"(?m)^.*LOCAL_MODULE_FILENAME.*\n", "", s)
+          s = re.sub(r"(?m)^LOCAL_MODULE\s*:=\s*SDL2\s*$", "LOCAL_MODULE := SDL2kv", s)
+          s = re.sub(r"(?m)^LOCAL_MODULE\s*:=\s*(lib)?hidapi\s*$", "LOCAL_MODULE := kvhidapi", s)
+          open("Android.mk", "w", encoding="utf-8").write(s)
+          EOP
+          echo "== Android.mk AFTER ==" | tee -a "$OUT/logs/sdl.log"
+          grep -n "LOCAL_MODULE\|BUILD_\|CLEAR_VARS" Android.mk | tee -a "$OUT/logs/sdl.log"
           export PATH="$ANDROID_NDK_HOME:$PATH"
           ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk APP_PLATFORM=android-24 APP_ABI=arm64-v8a \
-            APP_CFLAGS="-Wno-error" -j4 > "$OUT/logs/sdl.log" 2>&1 || { tail -100 "$OUT/logs/sdl.log"; exit 1; }
+            APP_CFLAGS="-Wno-error" -j4 >> "$OUT/logs/sdl.log" 2>&1 || { tail -100 "$OUT/logs/sdl.log"; exit 1; }
           ls -la libs/arm64-v8a
           cp libs/arm64-v8a/libSDL2kv.so libs/arm64-v8a/libkvhidapi.so "$OUT/jniLibs/arm64-v8a/"
           cp android-project/app/src/main/java/org/pyvora/kv/*.java "$OUT/java/org/pyvora/kv/" 2>/dev/null || \
