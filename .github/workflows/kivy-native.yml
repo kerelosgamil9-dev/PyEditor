@@ -51,11 +51,15 @@ jobs:
           EOP
           echo "== Android.mk AFTER ==" | tee -a "$OUT/logs/sdl.log"
           grep -n "LOCAL_MODULE\|BUILD_\|CLEAR_VARS" Android.mk | tee -a "$OUT/logs/sdl.log"
+          # NDK 27 removed ALooper_pollAll (SDL 2.28.5 still uses it): pollOnce is the same call for our use
+          grep -rl "ALooper_pollAll" src | xargs -r sed -i 's/ALooper_pollAll/ALooper_pollOnce/g'
           export PATH="$ANDROID_NDK_HOME:$PATH"
           ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk APP_PLATFORM=android-24 APP_ABI=arm64-v8a \
             APP_CFLAGS="-Wno-error" -j4 >> "$OUT/logs/sdl.log" 2>&1 || { tail -100 "$OUT/logs/sdl.log"; exit 1; }
           ls -la libs/arm64-v8a
-          cp libs/arm64-v8a/libSDL2kv.so libs/arm64-v8a/libkvhidapi.so "$OUT/jniLibs/arm64-v8a/"
+          cp libs/arm64-v8a/libSDL2kv.so "$OUT/jniLibs/arm64-v8a/"
+          # in SDL 2.28.5 hidapi is built inside libSDL2kv.so; copy a separate one only if it exists
+          cp libs/arm64-v8a/libkvhidapi.so "$OUT/jniLibs/arm64-v8a/" 2>/dev/null || true
           cp android-project/app/src/main/java/org/pyvora/kv/*.java "$OUT/java/org/pyvora/kv/" 2>/dev/null || \
             cp android-project/app/src/main/java/org/libsdl/app/*.java "$OUT/java/org/pyvora/kv/"
           ls "$OUT/java/org/pyvora/kv"
