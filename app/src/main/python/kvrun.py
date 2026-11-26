@@ -1,0 +1,153 @@
+"""Runs a script on the REAL Kivy (Kivy 2.3.1 on SDL2 + OpenGL ES).
+Called from KivyActivity.runPython() on the SDL thread (the thread SDL_main() runs on)."""
+import os, sys, io, json, types, traceback
+import importlib.abc, importlib.machinery, importlib.util
+
+_ACT = None          # the KivyActivity (Kotlin) - used for the live output panel
+
+
+class _NativeFinder(importlib.abc.MetaPathFinder):
+    """Kivy's native modules ship as lib*.so files in the app's lib folder (Android only unpacks lib*.so),
+    so 'import kivy.graphics.texture' is pointed at libkvx_kivy_graphics_texture.so"""
+
+    def __init__(self, libdir, mods):
+        self.libdir = libdir
+        self.mods = mods
+
+    def find_spec(self, fullname, path=None, target=None):
+        so = self.mods.get(fullname)
+        if so is None:
+            return None
+        p = os.path.join(self.libdir, so)
+        if not os.path.exists(p):
+            return None
+        loader = importlib.machinery.ExtensionFileLoader(fullname, p)
+        return importlib.util.spec_from_file_location(fullname, p, loader=loader)
+
+
+def _android_stub(act):
+    """Kivy (when it knows it runs on Android) imports python-for-android's 'android' module here and there.
+    This stand-in accepts every call and does nothing, so those code paths simply pass."""
+    m = types.ModuleType("android")
+    m.mActivity = act
+    m.activity = act
+
+    def _noop(*a, **k):
+        return None
+
+    def __getattr__(name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _noop
+
+    m.__getattr__ = __getattr__
+    return m
+
+
+class _Out:
+    """stdout / stderr: goes to the live output panel of KivyActivity and to a file (shown if the script fails)"""
+    encoding = "utf-8"
+    errors = "strict"
+
+    def __init__(self, f):
+        self.f = f
+
+    def write(self, s):
+        s = str(s)
+        self.f.write(s)
+        self.f.flush()
+        if _ACT is not None:
+            try:
+                _ACT.appendOut(s)
+            except Exception:
+                pass
+        return len(s)
+
+    def flush(self):
+        self.f.flush()
+
+    def isatty(self):
+        return False
+
+
+def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
+    global _ACT
+    _ACT = act
+    out = open(outfile, "a", encoding="utf-8")
+    sys.stdout = _Out(out)
+    sys.stderr = _Out(out)
+    sys.stdin = io.StringIO("")
+    sys.argv = [name]
+
+    # libraries the user installed with pip (same folder the normal console uses)
+    try:
+        import runner
+        runner._site(wd)
+    except Exception:
+        pass
+
+    rc = 0
+    try:
+        # 1) where Kivy's python files and native modules are
+        with open(os.path.join(rt, "kivy_ext.json"), "r", encoding="utf-8") as f:
+            mods = json.load(f)
+        sys.meta_path.insert(0, _NativeFinder(libdir, mods))
+        if rt not in sys.path:
+            sys.path.insert(0, rt)
+        sys.modules["android"] = _android_stub(act)
+
+        # 2) Kivy settings (must be set before 'import kivy')
+        env = os.environ
+        env["KIVY_BUILD"] = "android"
+        env["ANDROID_ARGUMENT"] = pub
+        env["KIVY_HOME"] = os.path.join(wd, ".kivy")
+        env["KIVY_NO_ARGS"] = "1"
+        env["KIVY_NO_FILELOG"] = "1"
+        env["KIVY_WINDOW"] = "sdl2"
+        env["KIVY_GL_BACKEND"] = "sdl2"
+        env["KIVY_TEXT"] = "pil"
+        env["KIVY_IMAGE"] = "pil"
+        env["PYVORA_DIR"] = pub
+        env["PYVORA_KV_FONTS"] = fonts
+        env.setdefault("HOME", wd)
+        try:
+            os.makedirs(env["KIVY_HOME"], exist_ok=True)
+        except Exception:
+            pass
+        try:
+            os.chdir(pub)
+        except Exception:
+            pass
+        if pub not in sys.path:
+            sys.path.insert(0, pub)
+
+        try:
+            import PIL  # noqa: F401
+        except Exception:
+            print("[PYVORA] Pillow is missing: Kivy needs it to draw text and images")
+
+        from kivy.config import Config
+        Config.set("graphics", "fullscreen", "auto")
+        Config.set("kivy", "exit_on_escape", "0")
+
+        # 3) run the user's script
+        with open(codepath, "r", encoding="utf-8") as f:
+            src = f.read()
+        try:
+            os.remove(codepath)
+        except OSError:
+            pass
+        g = {"__name__": "__main__", "__file__": os.path.join(pub, name), "__builtins__": __builtins__}
+        exec(compile(src, name, "exec"), g)
+    except SystemExit:
+        rc = 0
+    except BaseException:
+        rc = 1
+        et, ev, tb = sys.exc_info()
+        traceback.print_exception(et, ev, tb.tb_next if tb is not None and tb.tb_next is not None else tb)
+    finally:
+        try:
+            out.flush()
+        except Exception:
+            pass
+    return rc
