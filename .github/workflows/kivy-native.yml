@@ -105,7 +105,7 @@ jobs:
           cd "$W/kivy"
           pip install "Cython==3.0.11" "setuptools<80" wheel
           # SDL2 only (window + clipboard). Image/text go through Pillow for now, audio comes later.
-          python - <<'EOP'
+          python - <<'EOP' | tee "$OUT/logs/patch.log"
           import re
           s = open("setup.py", encoding="utf-8").read()
           for name in ("core/image/_img_sdl2.pyx", "core/text/_text_sdl2.pyx", "core/audio/audio_sdl2.pyx"):
@@ -117,6 +117,28 @@ jobs:
           EOP
           grep -n "SDL2_ttf\|SDL2_image\|SDL2_mixer\|NDKPLATFORM\|LIBLINK" setup.py || true
           # the linker finds "libSDL2.so" here, but its soname is libSDL2kv.so -> that is what ends up in NEEDED
+          # Kivy's setup.py only enables SDL2 when it also finds SDL_image / SDL_ttf / SDL_mixer headers (it said
+          # "missing sub library" -> use_sdl2 = 0 -> NO window module was built). We don't ship those libraries yet,
+          # so give it tiny stand-in headers (image loading for the window icon just returns "nothing").
+          STUB="$W/sdlstub"; mkdir -p "$STUB"
+          cat > "$STUB/SDL_image.h" <<'EOH'
+          #ifndef KV_SDL_IMAGE_STUB_H
+          #define KV_SDL_IMAGE_STUB_H
+          #include "SDL.h"
+          #define IMG_INIT_JPG 1
+          #define IMG_INIT_PNG 2
+          #define IMG_INIT_TIF 4
+          #define IMG_INIT_WEBP 8
+          #define IMG_Init(f) (0)
+          #define IMG_Quit() ((void)0)
+          #define IMG_Load(f) ((SDL_Surface *)0)
+          #define IMG_Load_RW(s, c) ((SDL_Surface *)0)
+          #define IMG_LoadTyped_RW(s, c, t) ((SDL_Surface *)0)
+          #define IMG_GetError SDL_GetError
+          #endif
+          EOH
+          printf '#include "SDL.h"\n' > "$STUB/SDL_ttf.h"
+          printf '#include "SDL.h"\n' > "$STUB/SDL_mixer.h"
           LINK="$W/linkdir"; mkdir -p "$LINK"
           cp "$W/SDL2-2.28.5/libs/arm64-v8a/libSDL2kv.so" "$LINK/libSDL2.so"
           PYH=$(dirname "$(find "$W/chaquo" -name pyconfig.h | head -1)")
@@ -125,7 +147,7 @@ jobs:
           export LDSHARED="$CC -shared" AR="$TB/llvm-ar" STRIP="$TB/llvm-strip"
           export CFLAGS="-I$PYH -I$W/SDL2-2.28.5/include -fPIC -O2 -DANDROID"
           export LDFLAGS="-L$PYLIB -L$LINK -Wl,--no-as-needed -lpython3.11 -llog -landroid"
-          export NDKPLATFORM=NOTNONE LIBLINK=NOTNONE USE_SDL2=1 KIVY_SDL2_PATH="$W/SDL2-2.28.5/include" KIVY_SPLIT_EXAMPLES=1
+          export NDKPLATFORM=NOTNONE LIBLINK=NOTNONE USE_SDL2=1 KIVY_SDL2_PATH="$W/SDL2-2.28.5/include:$STUB" KIVY_SPLIT_EXAMPLES=1
           # On Android Kivy's setup.py does NOT run Cython by itself ("Not using cython on android"):
           # python-for-android cythonizes first. We do the same: (1) let setup.py write the Android config files (it does that at the start of a real build_ext run),
           # (2) turn every .pyx into .c, (3) compile the .c files.
@@ -174,6 +196,15 @@ jobs:
           R="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
           echo "== NEEDED libraries of all Kivy modules =="
           for f in "$OUT"/jniLibs/arm64-v8a/libkvx_*.so; do "$R" -d "$f" | grep NEEDED; done | sort | uniq -c
+          NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$NM" -D --defined-only "$OUT/jniLibs/arm64-v8a/libSDL2kv.so" | awk '{print $3}' | sort -u > "$W/sdl_defined.txt"
+          for f in "$OUT"/jniLibs/arm64-v8a/libkvx_*.so; do "$NM" -D --undefined-only "$f" | awk '{print $2}'; done \
+            | grep -E '^(SDL_|IMG_|TTF_|Mix_)' | sort -u > "$W/sdl_needed.txt" || true
+          echo "== SDL functions the Kivy modules need but libSDL2kv.so does not have (should be empty) =="
+          comm -13 "$W/sdl_defined.txt" "$W/sdl_needed.txt" || true
+          echo "== end =="
+          echo "== is the window module there? =="
+          ls "$OUT"/jniLibs/arm64-v8a | grep -E "window_sdl2|clipboard_sdl2" || echo "NO window module"
           echo "== sizes =="
           du -sh "$OUT"/jniLibs "$OUT"/assets "$OUT"/java
           ls "$OUT/jniLibs/arm64-v8a" | head -100
