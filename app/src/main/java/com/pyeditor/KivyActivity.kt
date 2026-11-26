@@ -91,10 +91,24 @@ class KivyActivity : SDLActivity() {
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             val ime = insets.getInsets(WindowInsets.Type.ime())
             v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, maxOf(bars.bottom, ime.bottom))
+            // the keyboard was closed (its own button / the back gesture): Android does not tell Kivy, so the text field
+            // stayed "focused" and tapping it again did nothing. Tell Kivy to let go of the keyboard.
+            val imeShown = insets.isVisible(WindowInsets.Type.ime())
+            if (imeWasShown && !imeShown) {
+                Thread {
+                    try {
+                        Python.getInstance().getModule("kvrun").callAttr("ime_hidden")
+                    } catch (e: Throwable) {
+                    }
+                }.start()
+            }
+            imeWasShown = imeShown
             WindowInsets.CONSUMED
         }
         content.requestApplyInsets()
     }
+
+    private var imeWasShown = false
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
