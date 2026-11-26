@@ -45,5 +45,13 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode|touchscreen|mnc|mcc"/>
         <activity android:name=".TkOutputActivity" android:exported="false"/>
+
+        <!-- real Kivy (Kivy 2.3.1 on SDL2 + OpenGL ES) in its own process -->
+        <activity android:name=".KivyActivity" android:exported="false"
+            android:process=":kivy"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode|touchscreen|mnc|mcc"/>
     </application>
 </manifest>
