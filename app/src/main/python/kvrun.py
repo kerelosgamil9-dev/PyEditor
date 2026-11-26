@@ -111,7 +111,8 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
         env["PYVORA_KV_FONTS"] = fonts
         env.setdefault("HOME", wd)
         try:
-            os.makedirs(env["KIVY_HOME"], exist_ok=True)
+            # the icon folder is made here, so Kivy skips copying its logo files (that copy failed with "Permission denied")
+            os.makedirs(os.path.join(env["KIVY_HOME"], "icon"), exist_ok=True)
         except Exception:
             pass
         try:
@@ -137,8 +138,12 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
             os.remove(codepath)
         except OSError:
             pass
-        g = {"__name__": "__main__", "__file__": os.path.join(pub, name), "__builtins__": __builtins__}
-        exec(compile(src, name, "exec"), g)
+        # a real __main__ module with a __file__: Kivy (inspect.getfile) needs it to find the app's folder / .kv file
+        main_mod = types.ModuleType("__main__")
+        main_mod.__file__ = os.path.join(pub, name)
+        main_mod.__builtins__ = __builtins__
+        sys.modules["__main__"] = main_mod
+        exec(compile(src, name, "exec"), main_mod.__dict__)
     except SystemExit:
         rc = 0
     except BaseException:
