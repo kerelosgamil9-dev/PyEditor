@@ -107,7 +107,13 @@ class MainActivity : Activity() {
         fun run(code: String, name: String) {
             // scripts that use tkinter / turtle run on the REAL Tcl/Tk (TkActivity) when this device supports it
             val usesTk = Regex("""(?m)^\s*(import|from)\s+([Tt]kinter|turtle)\b""").containsMatchIn(code)
-            val target = if (usesTk && TkActivity.supported(this@MainActivity)) TkActivity::class.java else ConsoleActivity::class.java
+            // scripts that use kivy run on the REAL Kivy (KivyActivity) when this device supports it
+            val usesKivy = Regex("""(?m)^\s*(import|from)\s+kivy\b""").containsMatchIn(code)
+            val target = when {
+                usesKivy && KivyActivity.supported(this@MainActivity) -> KivyActivity::class.java
+                usesTk && TkActivity.supported(this@MainActivity) -> TkActivity::class.java
+                else -> ConsoleActivity::class.java
+            }
             val i = Intent(this@MainActivity, target).putExtra("name", name)
             // the code goes through a file, an Intent can only carry about 1 MB
             try {
