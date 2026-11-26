@@ -90,7 +90,10 @@ class KivyActivity : SDLActivity() {
         content.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             val ime = insets.getInsets(WindowInsets.Type.ime())
-            v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, maxOf(bars.bottom, ime.bottom))
+            // the keyboard does NOT shrink the drawing surface (resizing it made everything jump for a moment while
+            // Kivy and Android disagreed about the size). Like on a normal Kivy phone app the keyboard just covers the
+            // bottom; Kivy gets its height through android.get_keyboard_height(), so Window.softinput_mode works.
+            v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, bars.bottom)
             // the keyboard was closed (its own button / the back gesture): Android does not tell Kivy, so the text field
             // stayed "focused" and tapping it again did nothing. Tell Kivy to let go of the keyboard.
             val imeShown = insets.isVisible(WindowInsets.Type.ime())
@@ -102,6 +105,7 @@ class KivyActivity : SDLActivity() {
                     }
                 }.start()
             }
+            imeHeight = if (imeShown) ime.bottom else 0
             imeWasShown = imeShown
             WindowInsets.CONSUMED
         }
@@ -109,6 +113,11 @@ class KivyActivity : SDLActivity() {
     }
 
     private var imeWasShown = false
+    @Volatile private var imeHeight = 0
+
+    /** keyboard height in pixels (0 = closed); kvrun.py hands it to Kivy as android.get_keyboard_height() */
+    @Suppress("unused")
+    fun kbHeight(): Int = imeHeight
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
