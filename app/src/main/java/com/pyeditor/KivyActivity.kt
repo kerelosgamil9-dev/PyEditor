@@ -160,6 +160,18 @@ class KivyActivity : SDLActivity() {
         if (!panelOpen) outBtn?.text = "Output ●"
     }
 
+    private var keyboardKind = "text"
+
+    /**
+     * Kivy calls this when a TextInput gets focus (python-for-android's PythonActivity has the same method):
+     * 'text', 'number', 'url', 'mail', 'datetime', 'tel' or 'address'. SDL 2.28 always opens the normal text
+     * keyboard, so for now we only remember the type.
+     */
+    @Suppress("unused")
+    fun changeKeyboard(type: String?) {
+        keyboardKind = type ?: "text"
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_UP) finish()
