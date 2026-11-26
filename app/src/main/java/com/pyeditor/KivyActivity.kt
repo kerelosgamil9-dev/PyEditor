@@ -92,7 +92,9 @@ class KivyActivity : SDLActivity() {
             val ime = insets.getInsets(WindowInsets.Type.ime())
             // the keyboard does NOT shrink the drawing surface (resizing it made everything jump for a moment while
             // Kivy and Android disagreed about the size): the keyboard covers the bottom and Kivy moves its content.
-            v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, bars.bottom)
+            // the ✕ / Output bar sits BELOW the status bar (the status bar paints over anything drawn under it)
+            v.setPadding(bars.left, bars.top + topBarPx, bars.right, bars.bottom)
+            placeChips(bars.top)
             // tell Kivy whenever the keyboard opens, changes height or closes (height in pixels above the nav bar).
             // Kivy then moves the content up so the focused field stays visible, and lets go of the keyboard when
             // it was closed with its own button / the back gesture (Android does not tell Kivy about that).
@@ -130,6 +132,19 @@ class KivyActivity : SDLActivity() {
         setOnClickListener { onClick() }
     }
 
+    private var closeBtn: TextView? = null
+
+    /** keeps the two chips just under the status bar */
+    private fun placeChips(statusTop: Int) {
+        for (b in listOf(closeBtn, outBtn)) {
+            val lp = b?.layoutParams as? FrameLayout.LayoutParams ?: continue
+            if (lp.topMargin != statusTop + dp(4)) {
+                lp.topMargin = statusTop + dp(4)
+                b?.layoutParams = lp
+            }
+        }
+    }
+
     /** a thin bar in the unused top margin: ✕ closes the Kivy screen, "Output" shows what the script printed */
     private fun buildOverlay() {
         try {
@@ -139,6 +154,7 @@ class KivyActivity : SDLActivity() {
             decor.addView(close, FrameLayout.LayoutParams(dp(56), dp(36), Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(4); rightMargin = dp(6)
             })
+            closeBtn = close
             val tv = TextView(this).apply {
                 setTextColor(0xFF9EE6A8.toInt()); typeface = Typeface.MONOSPACE; textSize = 12f
                 setPadding(dp(8), dp(6), dp(8), dp(6)); setTextIsSelectable(true)
