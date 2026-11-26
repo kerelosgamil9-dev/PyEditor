@@ -26,7 +26,10 @@ android {
         ndk { abiFilters "arm64-v8a", "armeabi-v7a" }
         python {
             version "3.11"
-            pip { install "pip" }
+            pip {
+                install "pip"
+                install "pillow"      // real Kivy draws text and loads images through Pillow
+            }
         }
     }
 
