@@ -29,6 +29,7 @@ android {
             pip {
                 install "pip"
                 install "pillow"      // real Kivy draws text and loads images through Pillow
+                install "filetype"    // Kivy 2.3 imports it (kivy/core/image) to recognise image types
             }
         }
     }
