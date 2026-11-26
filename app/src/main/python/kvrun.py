@@ -75,6 +75,25 @@ class _Out:
         return False
 
 
+def ime_hidden():
+    """Called by KivyActivity (on Android's UI thread) when the on-screen keyboard was closed.
+    Kivy is not told about that by Android, so the TextInput would stay 'focused' and a new tap would not open the
+    keyboard again.  Let go of the keyboard on Kivy's own thread."""
+    try:
+        from kivy.clock import Clock
+
+        def _release(dt):
+            try:
+                from kivy.core.window import Window
+                Window.release_all_keyboards()
+            except Exception:
+                pass
+
+        Clock.schedule_once(_release, 0)
+    except Exception:
+        pass
+
+
 def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
     global _ACT
     _ACT = act
