@@ -35,14 +35,17 @@ def _android_stub(act):
     def _noop(*a, **k):
         return None
 
-    def _zero(*a, **k):
-        return 0
+    def _kb_height(*a, **k):
+        try:
+            return int(act.kbHeight())
+        except Exception:
+            return 0
 
     def __getattr__(name):
         if name.startswith("__"):
             raise AttributeError(name)
         if name == "get_keyboard_height":      # Kivy does arithmetic with this one
-            return _zero
+            return _kb_height
         return _noop
 
     m.__getattr__ = __getattr__
