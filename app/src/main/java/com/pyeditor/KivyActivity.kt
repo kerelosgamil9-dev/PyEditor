@@ -163,10 +163,15 @@ class KivyActivity : SDLActivity() {
     private var keyboardKind = "text"
 
     /**
-     * Kivy calls this when a TextInput gets focus (python-for-android's PythonActivity has the same method):
-     * 'text', 'number', 'url', 'mail', 'datetime', 'tel' or 'address'. SDL 2.28 always opens the normal text
-     * keyboard, so for now we only remember the type.
+     * Kivy calls this when a TextInput gets focus (python-for-android's PythonActivity has the same method).
+     * The type arrives as a number (or, in some Kivy versions, a text like "text" / "number").
+     * SDL 2.28 always opens the normal text keyboard, so for now we only remember it.
      */
+    @Suppress("unused")
+    fun changeKeyboard(type: Int) {
+        keyboardKind = type.toString()
+    }
+
     @Suppress("unused")
     fun changeKeyboard(type: String?) {
         keyboardKind = type ?: "text"
@@ -191,8 +196,8 @@ class KivyActivity : SDLActivity() {
         root.deleteRecursively()
         root.mkdirs()
         copyAsset("kivy_rt", File(root, "kivy_rt"))
-        // your own fonts: app/src/main/assets/kvfonts/*.ttf
-        copyAsset("kvfonts", File(root, "kvfonts"))
+        // the same fonts real tkinter uses (Cairo, DejaVu...): app/src/main/assets/tkfonts/*.ttf
+        copyAsset("tkfonts", File(root, "kvfonts"))
         stamp.writeText(ver)
     }
 
