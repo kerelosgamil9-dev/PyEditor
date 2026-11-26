@@ -25,6 +25,154 @@ class _NativeFinder(importlib.abc.MetaPathFinder):
         return importlib.util.spec_from_file_location(fullname, p, loader=loader)
 
 
+# Kivy's own Android audio provider needs pyjnius (python-for-android). This one does the same job with Chaquopy:
+# android.media.MediaPlayer plays mp3 / ogg / wav / flac / m4a ... (no extra native library needed).
+_AUDIO_SRC = r'''
+__all__ = ("SoundAndroidPlayer",)
+
+from java import jclass, dynamic_proxy
+from kivy.clock import mainthread
+from kivy.core.audio import Sound, SoundLoader
+from kivy.logger import Logger
+
+MediaPlayer = jclass("android.media.MediaPlayer")
+AudioManager = jclass("android.media.AudioManager")
+AudioAttributesBuilder = jclass("android.media.AudioAttributes$Builder")
+_CompletionListener = jclass("android.media.MediaPlayer$OnCompletionListener")
+
+
+class _Done(dynamic_proxy(_CompletionListener)):
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+
+    def onCompletion(self, mp):
+        self.callback()
+
+
+class SoundAndroidPlayer(Sound):
+    @staticmethod
+    def extensions():
+        return ("mp3", "aac", "3gp", "flac", "wav", "ogg", "m4a", "mid", "mp4")
+
+    def __init__(self, **kwargs):
+        self._mp = None
+        self._done = None
+        super().__init__(**kwargs)
+
+    def load(self):
+        self.unload()
+        try:
+            mp = MediaPlayer()
+            mp.setAudioAttributes(
+                AudioAttributesBuilder().setLegacyStreamType(AudioManager.STREAM_MUSIC).build())
+            mp.setDataSource(str(self.source))
+            self._done = _Done(self._completed)
+            mp.setOnCompletionListener(self._done)
+            mp.setLooping(bool(self.loop))
+            v = float(self.volume)
+            mp.setVolume(v, v)
+            mp.prepare()
+            self._mp = mp
+        except Exception as e:
+            Logger.warning("Audio: cannot load %s: %s" % (self.source, e))
+            self._mp = None
+
+    def unload(self):
+        mp, self._mp = self._mp, None
+        if mp is not None:
+            try:
+                mp.release()
+            except Exception:
+                pass
+
+    def play(self):
+        mp = self._mp
+        if mp is None:
+            return
+        try:
+            if mp.isPlaying():
+                mp.seekTo(0)          # played again while still playing: start over
+            else:
+                mp.start()
+        except Exception as e:
+            Logger.warning("Audio: play failed: %s" % e)
+            return
+        super().play()
+
+    def stop(self):
+        mp = self._mp
+        if mp is None:
+            return
+        try:
+            mp.stop()
+            mp.prepare()
+        except Exception:
+            pass
+        super().stop()
+
+    def seek(self, position):
+        if self._mp is not None:
+            try:
+                self._mp.seekTo(int(float(position) * 1000))
+            except Exception:
+                pass
+
+    def get_pos(self):
+        if self._mp is not None:
+            try:
+                return self._mp.getCurrentPosition() / 1000.
+            except Exception:
+                pass
+        return 0
+
+    def _get_length(self):
+        if self._mp is not None:
+            try:
+                return self._mp.getDuration() / 1000.
+            except Exception:
+                pass
+        return 0
+
+    def on_volume(self, instance, volume):
+        if self._mp is not None:
+            v = float(volume)
+            self._mp.setVolume(v, v)
+
+    def on_loop(self, instance, loop):
+        if self._mp is not None:
+            self._mp.setLooping(bool(loop))
+
+    @mainthread
+    def _completed(self):
+        super().stop()
+
+
+SoundLoader.register(SoundAndroidPlayer)
+'''
+
+
+class _SrcLoader(importlib.abc.Loader):
+    def __init__(self, src, path):
+        self.src = src
+        self.path = path
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        exec(compile(self.src, self.path, "exec"), module.__dict__)
+
+
+class _AudioFinder(importlib.abc.MetaPathFinder):
+    """'import kivy.core.audio.audio_android' (what Kivy does on Android) gets the Chaquopy version above"""
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "kivy.core.audio.audio_android":
+            return importlib.util.spec_from_loader(fullname, _SrcLoader(_AUDIO_SRC, "<pyvora audio_android>"))
+        return None
+
+
 def _android_stub(act):
     """Kivy (when it knows it runs on Android) imports python-for-android's 'android' module here and there.
     This stand-in accepts every call and does nothing, so those code paths simply pass."""
@@ -200,6 +348,7 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
         with open(os.path.join(rt, "kivy_ext.json"), "r", encoding="utf-8") as f:
             mods = json.load(f)
         sys.meta_path.insert(0, _NativeFinder(libdir, mods))
+        sys.meta_path.insert(0, _AudioFinder())
         if rt not in sys.path:
             sys.path.insert(0, rt)
         sys.modules["android"] = _android_stub(act)
