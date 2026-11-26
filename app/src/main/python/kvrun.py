@@ -125,6 +125,40 @@ def _setup_text(fonts):
     LabelBase.label = prop
 
 
+_KB = {"h": 0, "patched": False}
+
+
+def ime_changed(height):
+    """Called by KivyActivity (on Android's UI thread) when the on-screen keyboard opens, changes or closes.
+    height = pixels covered by the keyboard (0 = closed).
+    Kivy 2.3 reports keyboard_height = 0 on Android+SDL2, so Window.softinput_mode never worked there: we feed the real
+    height in. If the app did not choose a mode itself, 'below_target' is used (content moves up just enough to keep
+    the focused TextInput above the keyboard)."""
+    h = int(height)
+    prev = _KB["h"]
+    _KB["h"] = h
+    try:
+        from kivy.clock import Clock
+
+        def _apply(dt):
+            try:
+                from kivy.core.window import Window, WindowBase
+                if not _KB["patched"]:
+                    WindowBase._get_android_kheight = lambda self: _KB["h"]
+                    _KB["patched"] = True
+                if h > 0 and Window.softinput_mode == "":
+                    Window.softinput_mode = "below_target"
+                Window.trigger_keyboard_height()
+                if h == 0 and prev > 0:
+                    Window.release_all_keyboards()   # closed with its own button: let the TextInput lose focus
+            except Exception:
+                pass
+
+        Clock.schedule_once(_apply, 0)
+    except Exception:
+        pass
+
+
 def ime_hidden():
     """Called by KivyActivity (on Android's UI thread) when the on-screen keyboard was closed.
     Kivy is not told about that by Android, so the TextInput would stay 'focused' and a new tap would not open the
