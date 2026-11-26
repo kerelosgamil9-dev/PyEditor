@@ -165,10 +165,12 @@ class _SrcLoader(importlib.abc.Loader):
 
 
 class _AudioFinder(importlib.abc.MetaPathFinder):
-    """'import kivy.core.audio.audio_android' (what Kivy does on Android) gets the Chaquopy version above"""
+    """Kivy 2.3 only allows the audio providers gstplayer / pygame / ffpyplayer / sdl2 / avplayer. We answer to the name
+    'sdl2' (its module 'audio_sdl2' needs SDL2_mixer, which is not built), and also to Kivy's 'audio_android' name,
+    with the Chaquopy version above."""
 
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == "kivy.core.audio.audio_android":
+        if fullname in ("kivy.core.audio.audio_sdl2", "kivy.core.audio.audio_android"):
             return importlib.util.spec_from_loader(fullname, _SrcLoader(_AUDIO_SRC, "<pyvora audio_android>"))
         return None
 
