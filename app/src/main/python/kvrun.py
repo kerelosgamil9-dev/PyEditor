@@ -78,6 +78,53 @@ class _Out:
         return False
 
 
+def _setup_text(fonts):
+    """Arabic on Kivy (its text provider here is Pillow, which can neither join Arabic letters nor reorder them):
+    1) the default font becomes Cairo (Latin + Arabic) from assets/tkfonts, the same fonts real tkinter uses
+    2) every Label / Button / TextInput line goes through arabic_tk.shape() (joined letters + display order)
+    PYVORA_KV_ARABIC=0 switches both off (plain Kivy / Roboto)."""
+    if os.environ.get("PYVORA_KV_ARABIC", "1") == "0":
+        return
+    import re
+    import arabic_tk
+    from kivy.core.text import LabelBase, DEFAULT_FONT
+    from kivy.core.text.markup import MarkupLabel
+
+    reg = os.path.join(fonts, "Cairo-Regular.ttf")
+    bold = os.path.join(fonts, "Cairo-Bold.ttf")
+    if os.path.exists(reg):
+        if not os.path.exists(bold):
+            bold = reg
+        LabelBase.register(DEFAULT_FONT, fn_regular=reg, fn_italic=reg, fn_bold=bold, fn_bolditalic=bold)
+
+    tag = re.compile(r"(\[/?[A-Za-z]+(?:=[^\]]*)?\]|&bl;|&br;|&amp;)")
+
+    def _get_text(self):
+        t = self._text
+        if not isinstance(t, str) or not arabic_tk.has_rtl(t):
+            return t
+        try:
+            if isinstance(self, MarkupLabel):
+                # keep [b] [color=..] ... tags as they are, shape only the words between them
+                parts = tag.split(t)
+                return "".join(p if i % 2 else arabic_tk.shape(p) for i, p in enumerate(parts))
+            ts = getattr(self, "_text_size", None)
+            uw = ts[0] if ts else None
+            if uw and uw > 8:
+                try:
+                    # wrap on the logical text, then shape every line (so long Arabic text keeps its reading order)
+                    return arabic_tk.wrap_lines(t, int(uw * 0.97), lambda s: self.get_extents(s)[0])
+                except Exception:
+                    pass
+            return arabic_tk.shape(t)
+        except Exception:
+            return t
+
+    prop = property(_get_text, LabelBase._set_text, doc="Get/Set the text (Arabic shaped on the way out)")
+    LabelBase.text = prop
+    LabelBase.label = prop
+
+
 def ime_hidden():
     """Called by KivyActivity (on Android's UI thread) when the on-screen keyboard was closed.
     Kivy is not told about that by Android, so the TextInput would stay 'focused' and a new tap would not open the
@@ -168,6 +215,10 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
         from kivy.config import Config
         Config.set("graphics", "fullscreen", "auto")
         Config.set("kivy", "exit_on_escape", "0")
+        try:
+            _setup_text(fonts)
+        except Exception:
+            traceback.print_exc()
 
         # 3) run the user's script
         with open(codepath, "r", encoding="utf-8") as f:
