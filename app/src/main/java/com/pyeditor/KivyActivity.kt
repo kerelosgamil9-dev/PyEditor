@@ -91,28 +91,27 @@ class KivyActivity : SDLActivity() {
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             val ime = insets.getInsets(WindowInsets.Type.ime())
             // the keyboard does NOT shrink the drawing surface (resizing it made everything jump for a moment while
-            // Kivy and Android disagreed about the size). Like on a normal Kivy phone app the keyboard just covers the
-            // bottom; Kivy gets its height through android.get_keyboard_height(), so Window.softinput_mode works.
+            // Kivy and Android disagreed about the size): the keyboard covers the bottom and Kivy moves its content.
             v.setPadding(bars.left, maxOf(bars.top, topBarPx), bars.right, bars.bottom)
-            // the keyboard was closed (its own button / the back gesture): Android does not tell Kivy, so the text field
-            // stayed "focused" and tapping it again did nothing. Tell Kivy to let go of the keyboard.
+            // tell Kivy whenever the keyboard opens, changes height or closes (height in pixels above the nav bar).
+            // Kivy then moves the content up so the focused field stays visible, and lets go of the keyboard when
+            // it was closed with its own button / the back gesture (Android does not tell Kivy about that).
             val imeShown = insets.isVisible(WindowInsets.Type.ime())
-            if (imeWasShown && !imeShown) {
+            val newH = if (imeShown) maxOf(0, ime.bottom - bars.bottom) else 0
+            if (newH != imeHeight) {
                 Thread {
                     try {
-                        Python.getInstance().getModule("kvrun").callAttr("ime_hidden")
+                        Python.getInstance().getModule("kvrun").callAttr("ime_changed", newH)
                     } catch (e: Throwable) {
                     }
                 }.start()
             }
-            imeHeight = if (imeShown) ime.bottom else 0
-            imeWasShown = imeShown
+            imeHeight = newH
             WindowInsets.CONSUMED
         }
         content.requestApplyInsets()
     }
 
-    private var imeWasShown = false
     @Volatile private var imeHeight = 0
 
     /** keyboard height in pixels (0 = closed); kvrun.py hands it to Kivy as android.get_keyboard_height() */
