@@ -135,6 +135,8 @@ jobs:
           #define IMG_Load_RW(s, c) ((SDL_Surface *)0)
           #define IMG_LoadTyped_RW(s, c, t) ((SDL_Surface *)0)
           #define IMG_GetError SDL_GetError
+          #define IMG_SavePNG(s, f) (-1)
+          #define IMG_SaveJPG(s, f, q) (-1)
           #endif
           EOH
           printf '#include "SDL.h"\n' > "$STUB/SDL_ttf.h"
