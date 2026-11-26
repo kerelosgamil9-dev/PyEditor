@@ -35,9 +35,14 @@ def _android_stub(act):
     def _noop(*a, **k):
         return None
 
+    def _zero(*a, **k):
+        return 0
+
     def __getattr__(name):
         if name.startswith("__"):
             raise AttributeError(name)
+        if name == "get_keyboard_height":      # Kivy does arithmetic with this one
+            return _zero
         return _noop
 
     m.__getattr__ = __getattr__
@@ -110,6 +115,17 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
         env["PYVORA_DIR"] = pub
         env["PYVORA_KV_FONTS"] = fonts
         env.setdefault("HOME", wd)
+        # screen metrics from Android itself (Kivy would ask python-for-android's "jnius" for them)
+        try:
+            res = act.getResources()
+            dm = res.getDisplayMetrics()
+            env.setdefault("KIVY_DPI", str(float(dm.densityDpi)))
+            env.setdefault("KIVY_METRICS_DENSITY", str(float(dm.density)))
+            env.setdefault("KIVY_METRICS_FONTSCALE", str(float(res.getConfiguration().fontScale)))
+        except Exception:
+            env.setdefault("KIVY_DPI", "320")
+            env.setdefault("KIVY_METRICS_DENSITY", "2")
+            env.setdefault("KIVY_METRICS_FONTSCALE", "1")
         try:
             # the icon folder is made here, so Kivy skips copying its logo files (that copy failed with "Permission denied")
             os.makedirs(os.path.join(env["KIVY_HOME"], "icon"), exist_ok=True)
