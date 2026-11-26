@@ -24,8 +24,9 @@ jobs:
         with:
           path: ~/tk-native
           key: tk-native-v1-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: tk-native-v1-
       - name: Build real Tcl/Tk + _tkinter (arm64)
-        if: steps.tkcache.outputs.cache-hit != 'true'
+        if: steps.tkcache.outputs.cache-matched-key == ''
         run: |
           set -eo pipefail
           W=$HOME/tk-work; O=$HOME/tk-native
@@ -109,6 +110,216 @@ jobs:
           cp ~/tk-native/jniLibs/arm64-v8a/*.so app/src/main/jniLibs/arm64-v8a/
           cp -r ~/tk-native/assets/* app/src/main/assets/
           cp ~/tk-native/java/*.java app/src/main/java/org/libsdl/app/
+      # ---------------------------------------------------------------------------------------------
+      # REAL Kivy: SDL2 (renamed so it does not clash with the Tk one) + Kivy 2.3.1 native modules (arm64).
+      # Cached too. If you ever change the Kivy part, change "kv-native-v1" to "kv-native-v2" to force a rebuild.
+      # ---------------------------------------------------------------------------------------------
+      - name: Cache native Kivy
+        id: kvcache
+        uses: actions/cache@v4
+        with:
+          path: ~/kv-native
+          key: kv-native-v1
+      - name: Build real Kivy + SDL2 (arm64)
+        if: steps.kvcache.outputs.cache-hit != 'true'
+        run: |
+          set -eo pipefail
+          W=$HOME/kv-work; OUT=$HOME/kv-native; export W OUT
+          rm -rf "$W" "$OUT"
+          mkdir -p "$W" "$OUT/jniLibs/arm64-v8a" "$OUT/java/org/pyvora/kv" "$OUT/logs" "$OUT/assets"
+          cd "$W"
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o sdl.tgz https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-2.28.5.tar.gz
+          sha256sum sdl.tgz
+          tar xzf sdl.tgz
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o kivy.tgz https://github.com/kivy/kivy/archive/refs/tags/2.3.1.tar.gz
+          mkdir -p kivy && tar xzf kivy.tgz -C kivy --strip-components=1
+          V=3.11.14-0
+          U="com/chaquo/python/target/$V/target-$V-arm64-v8a.zip"
+          curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o chaquo.zip "https://repo1.maven.org/maven2/$U" \
+            || curl -fSL --retry 6 --retry-delay 20 --retry-all-errors -o chaquo.zip "https://repo.maven.apache.org/maven2/$U"
+          mkdir -p chaquo && unzip -q chaquo.zip -d chaquo
+          find chaquo -name pyconfig.h
+          find chaquo -name 'libpython3.11*.so'
+          ls kivy | head -30
+
+          cd "$W/SDL2-2.28.5"
+          # new Java package + new library names: no clash with the AndroWish SDL used by tkinter
+          grep -rlE 'org_libsdl_app|org/libsdl/app|org\.libsdl\.app' . | xargs sed -i \
+            -e 's/org_libsdl_app/org_pyvora_kv/g' -e 's#org/libsdl/app#org/pyvora/kv#g' -e 's/org\.libsdl\.app/org.pyvora.kv/g'
+          echo "== Android.mk BEFORE ==" | tee "$OUT/logs/sdl.log"
+          grep -n "LOCAL_MODULE\|BUILD_\|CLEAR_VARS" Android.mk | tee -a "$OUT/logs/sdl.log"
+          python - <<'EOP'
+          import re
+          s = open("Android.mk", encoding="utf-8").read()
+          # we only need the shared libraries: drop the static one (it chained onto the shared block and NDK 27 rejected it)
+          s = re.sub(r"(?s)LOCAL_MODULE\s*:=\s*SDL2_static.*?include\s+\$\(BUILD_STATIC_LIBRARY\)", "", s)
+          s = re.sub(r"(?m)^.*LOCAL_MODULE_FILENAME.*\n", "", s)
+          s = re.sub(r"(?m)^LOCAL_MODULE\s*:=\s*SDL2\s*$", "LOCAL_MODULE := SDL2kv", s)
+          s = re.sub(r"(?m)^LOCAL_MODULE\s*:=\s*(lib)?hidapi\s*$", "LOCAL_MODULE := kvhidapi", s)
+          open("Android.mk", "w", encoding="utf-8").write(s)
+          EOP
+          echo "== Android.mk AFTER ==" | tee -a "$OUT/logs/sdl.log"
+          grep -n "LOCAL_MODULE\|BUILD_\|CLEAR_VARS" Android.mk | tee -a "$OUT/logs/sdl.log"
+          # NDK 27 removed ALooper_pollAll (SDL 2.28.5 still uses it): pollOnce is the same call for our use
+          grep -rl "ALooper_pollAll" src | xargs -r sed -i 's/ALooper_pollAll/ALooper_pollOnce/g'
+          export PATH="$ANDROID_NDK_HOME:$PATH"
+          ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk APP_PLATFORM=android-24 APP_ABI=arm64-v8a \
+            APP_CFLAGS="-Wno-error" -j4 >> "$OUT/logs/sdl.log" 2>&1 || { tail -100 "$OUT/logs/sdl.log"; exit 1; }
+          ls -la libs/arm64-v8a
+          cp libs/arm64-v8a/libSDL2kv.so "$OUT/jniLibs/arm64-v8a/"
+          # in SDL 2.28.5 hidapi is built inside libSDL2kv.so; copy a separate one only if it exists
+          cp libs/arm64-v8a/libkvhidapi.so "$OUT/jniLibs/arm64-v8a/" 2>/dev/null || true
+          cp android-project/app/src/main/java/org/pyvora/kv/*.java "$OUT/java/org/pyvora/kv/" 2>/dev/null || \
+            cp android-project/app/src/main/java/org/libsdl/app/*.java "$OUT/java/org/pyvora/kv/"
+          ls "$OUT/java/org/pyvora/kv"
+
+          TB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cat > "$W/kvmain.c" <<'EOC'
+          #include <jni.h>
+          #include <SDL.h>
+          #include <android/log.h>
+          int SDL_main(int argc, char **argv)
+          {
+              JNIEnv *env = (JNIEnv *) SDL_AndroidGetJNIEnv();
+              jobject act = (jobject) SDL_AndroidGetActivity();
+              jclass cls = (*env)->GetObjectClass(env, act);
+              jmethodID mid = (*env)->GetMethodID(env, cls, "runPython", "()I");
+              int rc = 1;
+              if (!mid) {
+                  __android_log_print(ANDROID_LOG_ERROR, "PyvoraKivy", "runPython() not found");
+                  return 1;
+              }
+              rc = (*env)->CallIntMethod(env, act, mid);
+              if ((*env)->ExceptionCheck(env)) {
+                  (*env)->ExceptionDescribe(env);
+                  (*env)->ExceptionClear(env);
+              }
+              return rc;
+          }
+          EOC
+          "$TB/aarch64-linux-android24-clang" -shared -fPIC -O2 -I"$W/SDL2-2.28.5/include" \
+            -o "$OUT/jniLibs/arm64-v8a/libkvmain.so" "$W/kvmain.c" \
+            -L"$W/SDL2-2.28.5/libs/arm64-v8a" -lSDL2kv -llog
+          ls -la "$OUT/jniLibs/arm64-v8a"
+
+          TB="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cd "$W/kivy"
+          pip install "Cython==3.0.11" "setuptools<80" wheel
+          # SDL2 only (window + clipboard). Image/text go through Pillow for now, audio comes later.
+          python - <<'EOP' | tee "$OUT/logs/patch.log"
+          import re
+          s = open("setup.py", encoding="utf-8").read()
+          for name in ("core/image/_img_sdl2.pyx", "core/text/_text_sdl2.pyx", "core/audio/audio_sdl2.pyx"):
+              s, k = re.subn(r"^[ \t]*['\"]%s['\"],?[ \t]*\n" % re.escape(name), "", s, flags=re.M)
+              print(name, "removed" if k else "NOT FOUND")
+          s, k = re.subn(r"\[\s*['\"]SDL2['\"]\s*,\s*['\"]SDL2_ttf['\"]\s*,\s*['\"]SDL2_image['\"]\s*,\s*['\"]SDL2_mixer['\"]\s*\]", "['SDL2']", s)
+          print("libs list", "patched" if k else "NOT FOUND")
+          open("setup.py", "w", encoding="utf-8").write(s)
+          EOP
+          grep -n "SDL2_ttf\|SDL2_image\|SDL2_mixer\|NDKPLATFORM\|LIBLINK" setup.py || true
+          # the linker finds "libSDL2.so" here, but its soname is libSDL2kv.so -> that is what ends up in NEEDED
+          # Kivy's setup.py only enables SDL2 when it also finds SDL_image / SDL_ttf / SDL_mixer headers (it said
+          # "missing sub library" -> use_sdl2 = 0 -> NO window module was built). We don't ship those libraries yet,
+          # so give it tiny stand-in headers (image loading for the window icon just returns "nothing").
+          STUB="$W/sdlstub"; mkdir -p "$STUB"
+          cat > "$STUB/SDL_image.h" <<'EOH'
+          #ifndef KV_SDL_IMAGE_STUB_H
+          #define KV_SDL_IMAGE_STUB_H
+          #include "SDL.h"
+          #define IMG_INIT_JPG 1
+          #define IMG_INIT_PNG 2
+          #define IMG_INIT_TIF 4
+          #define IMG_INIT_WEBP 8
+          #define IMG_Init(f) (0)
+          #define IMG_Quit() ((void)0)
+          #define IMG_Load(f) ((SDL_Surface *)0)
+          #define IMG_Load_RW(s, c) ((SDL_Surface *)0)
+          #define IMG_LoadTyped_RW(s, c, t) ((SDL_Surface *)0)
+          #define IMG_GetError SDL_GetError
+          #define IMG_SavePNG(s, f) (-1)
+          #define IMG_SaveJPG(s, f, q) (-1)
+          #endif
+          EOH
+          printf '#include "SDL.h"\n' > "$STUB/SDL_ttf.h"
+          printf '#include "SDL.h"\n' > "$STUB/SDL_mixer.h"
+          LINK="$W/linkdir"; mkdir -p "$LINK"
+          cp "$W/SDL2-2.28.5/libs/arm64-v8a/libSDL2kv.so" "$LINK/libSDL2.so"
+          PYH=$(dirname "$(find "$W/chaquo" -name pyconfig.h | head -1)")
+          PYLIB=$(dirname "$(find "$W/chaquo" -name 'libpython3.11*.so' | head -1)")
+          export CC="$TB/aarch64-linux-android24-clang" CXX="$TB/aarch64-linux-android24-clang++"
+          export LDSHARED="$CC -shared" AR="$TB/llvm-ar" STRIP="$TB/llvm-strip"
+          export CFLAGS="-I$PYH -I$W/SDL2-2.28.5/include -fPIC -O2 -DANDROID"
+          export LDFLAGS="-L$PYLIB -L$LINK -Wl,--no-as-needed -lpython3.11 -llog -landroid"
+          export NDKPLATFORM=NOTNONE LIBLINK=NOTNONE USE_SDL2=1 KIVY_SDL2_PATH="$W/SDL2-2.28.5/include:$STUB" KIVY_SPLIT_EXAMPLES=1
+          # On Android Kivy's setup.py does NOT run Cython by itself ("Not using cython on android"):
+          # python-for-android cythonizes first. We do the same: (1) let setup.py write the Android config files (it does that at the start of a real build_ext run),
+          # (2) turn every .pyx into .c, (3) compile the .c files.
+          python setup.py build_ext --inplace > "$OUT/logs/kivy-config.log" 2>&1 || true   # this first run is expected to fail: it only has to write config.pxi
+          test -f kivy/include/config.pxi || { echo "config.pxi was not written"; tail -60 "$OUT/logs/kivy-config.log"; exit 1; }
+          find kivy -name 'config.pxi' -o -name 'config.h'
+          echo "pyx files: $(find kivy -name '*.pyx' | wc -l)"
+          find kivy -name '*.pyx' -print0 | xargs -0 -n1 -P4 sh -c 'cython -3 -I . "$0" || echo "CYTHON FAILED: $0"' > "$OUT/logs/cython.log" 2>&1 || true
+          grep "CYTHON FAILED" "$OUT/logs/cython.log" || echo "cython: no failures"
+          echo "c files: $(find kivy -name '*.c' | wc -l)"
+          python setup.py build_ext --inplace -j4 -v > "$OUT/logs/kivy.log" 2>&1 || { tail -150 "$OUT/logs/kivy.log"; exit 1; }
+          tail -5 "$OUT/logs/kivy.log"
+          find kivy -name '*.so' | wc -l
+
+          python - <<'EOP'
+          import os, json, shutil, subprocess
+          W = os.environ["W"]; OUT = os.environ["OUT"]
+          src = os.path.join(W, "kivy")
+          lib = os.path.join(OUT, "jniLibs", "arm64-v8a")
+          strip = os.path.join(os.environ["ANDROID_NDK_HOME"], "toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip")
+          mods = {}
+          for root, _, files in os.walk(os.path.join(src, "kivy")):
+              for f in files:
+                  if not f.endswith(".so"):
+                      continue
+                  rel = os.path.relpath(root, src).replace(os.sep, ".")
+                  mod = rel + "." + f.split(".")[0]
+                  name = "libkvx_" + mod.replace(".", "_") + ".so"
+                  assert name not in mods.values(), name
+                  dst = os.path.join(lib, name)
+                  shutil.copy(os.path.join(root, f), dst)
+                  subprocess.run([strip, "--strip-unneeded", dst], check=True)
+                  mods[mod] = name
+          print(len(mods), "native modules")
+          if not mods:
+              raise SystemExit("no .so produced")
+          rt = os.path.join(OUT, "assets", "kivy_rt")
+          os.makedirs(rt, exist_ok=True)
+          json.dump(mods, open(os.path.join(rt, "kivy_ext.json"), "w"), indent=0, sort_keys=True)
+          ign = shutil.ignore_patterns("*.so", "*.pyx", "*.pxd", "*.pxi", "*.c", "*.h", "*.o", "*.pyc", "__pycache__", "tests", "examples")
+          shutil.copytree(os.path.join(src, "kivy"), os.path.join(rt, "kivy"), ignore=ign)
+          EOP
+          R="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          echo "== NEEDED libraries of all Kivy modules =="
+          for f in "$OUT"/jniLibs/arm64-v8a/libkvx_*.so; do "$R" -d "$f" | grep NEEDED; done | sort | uniq -c
+          NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$NM" -D --defined-only "$OUT/jniLibs/arm64-v8a/libSDL2kv.so" | awk '{print $3}' | sort -u > "$W/sdl_defined.txt"
+          for f in "$OUT"/jniLibs/arm64-v8a/libkvx_*.so; do "$NM" -D --undefined-only "$f" | awk '{print $2}'; done \
+            | grep -E '^(SDL_|IMG_|TTF_|Mix_)' | sort -u > "$W/sdl_needed.txt" || true
+          echo "== SDL functions the Kivy modules need but libSDL2kv.so does not have (should be empty) =="
+          comm -13 "$W/sdl_defined.txt" "$W/sdl_needed.txt" || true
+          echo "== end =="
+          echo "== is the window module there? =="
+          ls "$OUT"/jniLibs/arm64-v8a | grep -E "window_sdl2|clipboard_sdl2" || echo "NO window module"
+          echo "== sizes =="
+          du -sh "$OUT"/jniLibs "$OUT"/assets "$OUT"/java
+          ls "$OUT/jniLibs/arm64-v8a" | head -100
+      - name: Upload Kivy build logs (only when the Kivy build failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kivy-build-logs
+          path: /home/runner/kv-native/logs
+      - name: Add native Kivy to the app
+        run: |
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets app/src/main/java/org/pyvora/kv
+          cp ~/kv-native/jniLibs/arm64-v8a/*.so app/src/main/jniLibs/arm64-v8a/
+          cp -r ~/kv-native/assets/* app/src/main/assets/
+          cp ~/kv-native/java/org/pyvora/kv/*.java app/src/main/java/org/pyvora/kv/
       # Optional: sign with your OWN key (needed for Google Play). Without these secrets the repo keystore is used.
       - name: Release key (optional)
         env:
