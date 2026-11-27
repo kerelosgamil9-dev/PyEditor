@@ -228,6 +228,17 @@ class KivyActivity : SDLActivity() {
         }.start()
     }
 
+    /** what Android's other screens send back (gallery / file picker, camera...): handed to android.activity.bind(on_activity_result=...) */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        Thread {
+            try {
+                Python.getInstance().getModule("kvrun").callAttr("act_result", requestCode, resultCode, data)
+            } catch (e: Throwable) {
+            }
+        }.start()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_UP) finish()
