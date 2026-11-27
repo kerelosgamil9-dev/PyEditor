@@ -263,6 +263,37 @@ class _AudioFinder(importlib.abc.MetaPathFinder):
         return importlib.util.spec_from_loader(fullname, _SrcLoader(src, "<pyvora %s>" % fullname))
 
 
+_CALLBACKS = {}        # android.activity.bind(on_activity_result=..., on_new_intent=...) -> list of callbacks
+
+
+def act_result(request, result, data):
+    """Called by KivyActivity.onActivityResult: what Android's other screens (gallery picker, camera, file picker...)
+    send back. Passed on to the callbacks registered with android.activity.bind(on_activity_result=...)."""
+    for cb in list(_CALLBACKS.get("on_activity_result", [])):
+        try:
+            cb(int(request), int(result), data)
+        except Exception:
+            traceback.print_exc()
+
+
+class _ActivityObj(object):
+    """python-for-android's 'android.activity': bind() / unbind() for the Activity's events"""
+
+    def __init__(self, act):
+        self.mActivity = act
+
+    def bind(self, **kwargs):
+        for name, cb in kwargs.items():
+            _CALLBACKS.setdefault(name, []).append(cb)
+
+    def unbind(self, **kwargs):
+        for name, cb in kwargs.items():
+            try:
+                _CALLBACKS.get(name, []).remove(cb)
+            except ValueError:
+                pass
+
+
 _PENDING = {}          # permission request code -> (permissions, callback)
 _NEXT = [4200]
 
@@ -315,7 +346,7 @@ def _android_stub(act):
         return _noop
 
     m.__getattr__ = __getattr__
-    m.activity = types.SimpleNamespace(bind=_noop, unbind=_noop, mActivity=act)
+    m.activity = _ActivityObj(act)
 
     # ---- android.runnable ----
     r = types.ModuleType("android.runnable")
