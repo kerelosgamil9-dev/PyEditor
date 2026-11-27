@@ -644,7 +644,6 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
 
         from kivy.config import Config
         Config.set("graphics", "fullscreen", "auto")
-        Config.set("kivy", "exit_on_escape", "0")
         try:
             _setup_text(fonts)
         except Exception:
