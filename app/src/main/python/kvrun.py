@@ -164,23 +164,133 @@ class _SrcLoader(importlib.abc.Loader):
         exec(compile(self.src, self.path, "exec"), module.__dict__)
 
 
+# pyjnius is a python-for-android library. Many Kivy apps do "from jnius import autoclass" when they run on Android,
+# so this gives them the same names on top of Chaquopy's "java" module.
+_JNIUS_SRC = r'''
+from java import jclass, cast as _cast, dynamic_proxy
+
+__all__ = ["autoclass", "cast", "java_method", "PythonJavaClass", "JavaException", "JavaClass", "MetaJavaClass", "detach"]
+
+JavaException = jclass("java.lang.Throwable")
+JavaClass = object
+MetaJavaClass = type
+
+
+def detach():
+    pass
+
+
+class _PythonActivity(object):
+    """stand-in for python-for-android's org.kivy.android.PythonActivity"""
+
+    @property
+    def mActivity(self):
+        import kvrun
+        return kvrun._ACT
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(jclass("com.pyeditor.KivyActivity"), name)
+
+
+_PA = _PythonActivity()
+_SPECIAL = {"org.kivy.android.PythonActivity": _PA, "org.renpy.android.PythonActivity": _PA}
+
+
+def autoclass(clsname, include_protected=True, include_private=True):
+    name = str(clsname).replace("/", ".")
+    sp = _SPECIAL.get(name)
+    if sp is not None:
+        return sp
+    return jclass(name)
+
+
+def cast(output, obj):
+    if isinstance(output, str):
+        output = jclass(output.replace("/", "."))
+    return _cast(output, obj)
+
+
+def java_method(signature, name=None, multi=False):
+    def deco(f):
+        return f
+    return deco
+
+
+_PROXIES = {}
+
+
+class PythonJavaClass(object):
+    """a Python class that implements Java interfaces (__javainterfaces__ = ["android/view/View$OnClickListener"])"""
+    __javainterfaces__ = []
+    __javacontext__ = "app"
+
+    def __new__(cls, *args, **kwargs):
+        if getattr(cls, "_kv_proxy", False):
+            return super(PythonJavaClass, cls).__new__(cls)
+        proxy = _PROXIES.get(cls)
+        if proxy is None:
+            ifaces = [jclass(i.replace("/", ".")) for i in cls.__javainterfaces__]
+            proxy = type(cls.__name__, (cls, dynamic_proxy(*ifaces)), {"_kv_proxy": True})
+            _PROXIES[cls] = proxy
+        return proxy.__new__(proxy, *args, **kwargs)
+
+    def __init__(self, *args, **kwargs):
+        try:
+            super(PythonJavaClass, self).__init__()
+        except Exception:
+            pass
+'''
+
+_EMBEDDED = {}   # module name -> python source (filled in main())
+
+
 class _AudioFinder(importlib.abc.MetaPathFinder):
-    """Kivy 2.3 only allows the audio providers gstplayer / pygame / ffpyplayer / sdl2 / avplayer. We answer to the name
+    """Modules that are written inside this file.
+    Kivy 2.3 only allows the audio providers gstplayer / pygame / ffpyplayer / sdl2 / avplayer. We answer to the name
     'sdl2' (its module 'audio_sdl2' needs SDL2_mixer, which is not built), and also to Kivy's 'audio_android' name,
-    with the Chaquopy version above."""
+    with the Chaquopy audio provider above. 'jnius' gets the small pyjnius layer above."""
 
     def find_spec(self, fullname, path=None, target=None):
-        if fullname in ("kivy.core.audio.audio_sdl2", "kivy.core.audio.audio_android"):
-            return importlib.util.spec_from_loader(fullname, _SrcLoader(_AUDIO_SRC, "<pyvora audio_android>"))
-        return None
+        if not _EMBEDDED:
+            _EMBEDDED["kivy.core.audio.audio_sdl2"] = _AUDIO_SRC
+            _EMBEDDED["kivy.core.audio.audio_android"] = _AUDIO_SRC
+            _EMBEDDED["jnius"] = _JNIUS_SRC
+        src = _EMBEDDED.get(fullname)
+        if src is None:
+            return None
+        return importlib.util.spec_from_loader(fullname, _SrcLoader(src, "<pyvora %s>" % fullname))
+
+
+_PENDING = {}          # permission request code -> (permissions, callback)
+_NEXT = [4200]
+
+
+def perm_result(code, perms, results):
+    """Called by KivyActivity.onRequestPermissionsResult (perms / results are comma separated texts)"""
+    cb = _PENDING.pop(int(code), None)
+    if cb is None:
+        return
+    permissions, callback = cb
+    if callback is None:
+        return
+    names = [x for x in str(perms).split(",") if x]
+    res = [x.strip() == "0" for x in str(results).split(",") if x.strip() != ""]
+    try:
+        callback(names, res)
+    except Exception:
+        traceback.print_exc()
 
 
 def _android_stub(act):
-    """Kivy (when it knows it runs on Android) imports python-for-android's 'android' module here and there.
-    This stand-in accepts every call and does nothing, so those code paths simply pass."""
+    """Kivy (when it knows it runs on Android) imports python-for-android's 'android' module here and there, and many
+    Kivy apps do 'from android.permissions import ...' / 'from android.storage import ...'.
+    This is a small version of that package built on Chaquopy; names it does not know simply do nothing."""
+    from java import jclass, dynamic_proxy
     m = types.ModuleType("android")
+    m.__path__ = []                    # a package, so 'import android.permissions' works
     m.mActivity = act
-    m.activity = act
 
     def _noop(*a, **k):
         return None
@@ -191,6 +301,12 @@ def _android_stub(act):
         except Exception:
             return 0
 
+    try:
+        sdk = int(jclass("android.os.Build$VERSION").SDK_INT)
+    except Exception:
+        sdk = 30
+    m.api_version = sdk
+
     def __getattr__(name):
         if name.startswith("__"):
             raise AttributeError(name)
@@ -199,6 +315,101 @@ def _android_stub(act):
         return _noop
 
     m.__getattr__ = __getattr__
+    m.activity = types.SimpleNamespace(bind=_noop, unbind=_noop, mActivity=act)
+
+    # ---- android.runnable ----
+    r = types.ModuleType("android.runnable")
+
+    def run_on_ui_thread(f):
+        def wrapper(*a, **k):
+            class _R(dynamic_proxy(jclass("java.lang.Runnable"))):
+                def __init__(self):
+                    super().__init__()
+
+                def run(self):
+                    try:
+                        f(*a, **k)
+                    except Exception:
+                        traceback.print_exc()
+            act.runOnUiThread(_R())
+        return wrapper
+
+    r.run_on_ui_thread = run_on_ui_thread
+    r.Runnable = None
+
+    # ---- android.storage ----
+    s = types.ModuleType("android.storage")
+    s.app_storage_path = lambda: str(act.getFilesDir().getAbsolutePath())
+    s.primary_external_storage_path = lambda: str(
+        jclass("android.os.Environment").getExternalStorageDirectory().getAbsolutePath())
+    s.secondary_external_storage_path = lambda: None
+
+    # ---- android.permissions ----
+    pm = types.ModuleType("android.permissions")
+
+    class _PermMeta(type):
+        def __getattr__(cls, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return "android.permission." + name
+
+    class Permission(metaclass=_PermMeta):
+        pass
+
+    def check_permission(permission):
+        p = str(permission)
+        try:
+            env = jclass("android.os.Environment")
+            if sdk >= 30 and p.rsplit(".", 1)[-1] in ("MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE",
+                                                      "WRITE_EXTERNAL_STORAGE"):
+                if env.isExternalStorageManager():          # "all files access" covers the storage permissions
+                    return True
+                if p.endswith("MANAGE_EXTERNAL_STORAGE"):
+                    return False
+            return int(act.checkSelfPermission(p)) == 0
+        except Exception:
+            return False
+
+    def request_permissions(permissions, callback=None):
+        perms = [str(x) for x in permissions]
+        need = [x for x in perms if not check_permission(x)]
+        if not need:
+            if callback:
+                try:
+                    callback(perms, [True] * len(perms))
+                except Exception:
+                    traceback.print_exc()
+            return
+        # "all files access" is a settings page, not a pop-up: the editor asks for it elsewhere
+        need = [x for x in need if not x.endswith("MANAGE_EXTERNAL_STORAGE")]
+        if not need:
+            if callback:
+                callback(perms, [check_permission(x) for x in perms])
+            return
+        _NEXT[0] += 1
+        code = _NEXT[0]
+        _PENDING[code] = (perms, callback)
+
+        def _ask():
+            arr = jclass("java.lang.String")
+            from java import jarray
+            act.requestPermissions(jarray(arr)(need), code)
+
+        run_on_ui_thread(_ask)()
+
+    def request_permission(permission, callback=None):
+        request_permissions([permission], callback)
+
+    pm.Permission = Permission
+    pm.check_permission = check_permission
+    pm.request_permissions = request_permissions
+    pm.request_permission = request_permission
+    pm.PERMISSION_GRANTED = 0
+    pm.PERMISSION_DENIED = -1
+
+    for sub in (r, s, pm):
+        sys.modules[sub.__name__] = sub
+        setattr(m, sub.__name__.split(".")[1], sub)
     return m
 
 
@@ -253,6 +464,8 @@ def _setup_text(fonts):
         t = self._text
         if not isinstance(t, str) or not arabic_tk.has_rtl(t):
             return t
+        if any("\ufb50" <= c <= "\ufdff" or "\ufe70" <= c <= "\ufeff" for c in t):
+            return t       # the app already joined / reordered the letters itself (arabic_reshaper + bidi): keep it
         try:
             if isinstance(self, MarkupLabel):
                 # keep [b] [color=..] ... tags as they are, shape only the words between them
@@ -363,6 +576,7 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
         env["KIVY_NO_ARGS"] = "1"
         env["KIVY_NO_FILELOG"] = "1"
         env["KIVY_WINDOW"] = "sdl2"
+        env["KIVY_CLIPBOARD"] = "sdl2,dummy"       # SDL talks to the real Android clipboard
         env["KIVY_GL_BACKEND"] = "sdl2"
         env["KIVY_TEXT"] = "pil"
         env["KIVY_IMAGE"] = "pil"
@@ -404,6 +618,13 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
             _setup_text(fonts)
         except Exception:
             traceback.print_exc()
+        try:
+            # fonts shipped with the editor (Cairo, DejaVu...) are found by plain file name, like next to the script
+            from kivy.resources import resource_add_path
+            resource_add_path(fonts)
+            resource_add_path(pub)
+        except Exception:
+            pass
 
         # 3) run the user's script
         with open(codepath, "r", encoding="utf-8") as f:
