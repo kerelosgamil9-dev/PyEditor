@@ -73,9 +73,15 @@ class KivyActivity : SDLActivity() {
         super.onCreate(savedInstanceState)
         keepClearOfSystemBars()
         buildOverlay()
-        // Back button / gesture closes the Kivy screen (a fullscreen window has no title bar to close it with)
+        // Back button / gesture: Kivy gets it as the Escape key (27), like in any Kivy phone app, so the app can go
+        // back one screen itself; a Kivy app that does not handle it exits (Kivy's exit_on_escape). The red ✕ at
+        // the top always closes the screen. (On Android 13+ the system sends Back as a "callback", not as a key,
+        // so it is turned into the key SDL expects here.)
         if (Build.VERSION.SDK_INT >= 33) {
-            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { finish() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_BACK)
+                SDLActivity.onNativeKeyUp(KeyEvent.KEYCODE_BACK)
+            }
         }
     }
 
@@ -239,13 +245,6 @@ class KivyActivity : SDLActivity() {
         }.start()
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            if (event.action == KeyEvent.ACTION_UP) finish()
-            return true
-        }
-        return super.dispatchKeyEvent(event)
-    }
 
     private fun runtimeDir() = File(filesDir, "kvrt")
 
