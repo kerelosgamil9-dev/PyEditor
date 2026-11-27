@@ -215,6 +215,19 @@ class KivyActivity : SDLActivity() {
         keyboardKind = type ?: "text"
     }
 
+    /** the answer of Android's permission pop-up: handed to android.permissions.request_permissions(..., callback) */
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val p = permissions.joinToString(",")
+        val g = grantResults.joinToString(",")
+        Thread {
+            try {
+                Python.getInstance().getModule("kvrun").callAttr("perm_result", requestCode, p, g)
+            } catch (e: Throwable) {
+            }
+        }.start()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_UP) finish()
