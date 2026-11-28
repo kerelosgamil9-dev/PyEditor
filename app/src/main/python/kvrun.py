@@ -235,10 +235,13 @@ class PythonJavaClass(object):
         if proxy is None:
             ifaces = [jclass(i.replace("/", ".")) for i in cls.__javainterfaces__]
 
+            base = dynamic_proxy(*ifaces)
+
             def _init(self, *a, **k):
+                base.__init__(self)            # Chaquopy: must run before the object is used as a Java object
                 cls.__init__(self, *a, **k)
 
-            proxy = type(cls.__name__, (dynamic_proxy(*ifaces), cls), {"__init__": _init, "_kv_proxy": True})
+            proxy = type(cls.__name__, (base, cls), {"__init__": _init, "_kv_proxy": True})
             _PROXIES[cls] = proxy
         # python then calls __init__(*args) on this object (it is an instance of cls)
         return proxy.__new__(proxy)
@@ -493,11 +496,18 @@ def _setup_text(fonts):
             bold = reg
         LabelBase.register(DEFAULT_FONT, fn_regular=reg, fn_italic=reg, fn_bold=bold, fn_bolditalic=bold)
 
+    # zero-width / bidi control characters: SDL_ttf draws them as nothing, Pillow draws an empty box
+    invisible = re.compile("[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
+
     tag = re.compile(r"(\[/?[A-Za-z]+(?:=[^\]]*)?\]|&bl;|&br;|&amp;)")
 
     def _get_text(self):
         t = self._text
-        if not isinstance(t, str) or not arabic_tk.has_rtl(t):
+        if not isinstance(t, str):
+            return t
+        if invisible.search(t):
+            t = invisible.sub("", t)
+        if not arabic_tk.has_rtl(t):
             return t
         if any("\ufb50" <= c <= "\ufdff" or "\ufe70" <= c <= "\ufeff" for c in t):
             return t       # the app already joined / reordered the letters itself (arabic_reshaper + bidi): keep it
