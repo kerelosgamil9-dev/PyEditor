@@ -219,6 +219,7 @@ def java_method(signature, name=None, multi=False):
 
 
 _PROXIES = {}
+_DEBUG = [0]
 
 
 class PythonJavaClass(object):
@@ -234,17 +235,28 @@ class PythonJavaClass(object):
         proxy = _PROXIES.get(cls)
         if proxy is None:
             ifaces = [jclass(i.replace("/", ".")) for i in cls.__javainterfaces__]
-
             base = dynamic_proxy(*ifaces)
 
             def _init(self, *a, **k):
-                base.__init__(self)            # Chaquopy: must run before the object is used as a Java object
+                if "_kv_inited" in self.__dict__:
+                    return                          # python calls __init__ a second time on the returned object
+                super(proxy, self).__init__()      # Chaquopy: must run before the object is used as a Java object
+                self.__dict__["_kv_inited"] = True
+                if _DEBUG[0] < 3:
+                    _DEBUG[0] += 1
+                    try:
+                        object.__getattribute__(self, "_chaquopy_this")
+                        ready = True
+                    except AttributeError:
+                        ready = False
+                    print("[PYVORA] jnius proxy %s: java part ready=%s, mro=%s" % (
+                        cls.__name__, ready, [c.__name__ for c in type(self).__mro__]))
                 cls.__init__(self, *a, **k)
 
             proxy = type(cls.__name__, (base, cls), {"__init__": _init, "_kv_proxy": True})
             _PROXIES[cls] = proxy
-        # python then calls __init__(*args) on this object (it is an instance of cls)
-        return proxy.__new__(proxy)
+        # a normal instantiation of the proxy class: Chaquopy builds the Java side, then __init__ runs
+        return proxy(*args, **kwargs)
 
     def __init__(self, *args, **kwargs):
         pass
@@ -480,6 +492,78 @@ class _Out:
 _SEEN_INVISIBLE = set()
 
 
+_FONT_CHARS = {}       # font path -> set of code points the font has glyphs for (None = unreadable)
+_REPORTED = set()
+
+
+def _font_chars(path):
+    """code points a .ttf font can draw (reads its 'cmap' table; only used for the diagnostics below)"""
+    if path in _FONT_CHARS:
+        return _FONT_CHARS[path]
+    import struct
+    chars = None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        num = struct.unpack(">H", data[4:6])[0]
+        off = None
+        for i in range(num):
+            tag, _cs, o, _l = struct.unpack(">4sIII", data[12 + 16 * i: 28 + 16 * i])
+            if tag == b"cmap":
+                off = o
+                break
+        if off is not None:
+            chars = set()
+            ntab = struct.unpack(">H", data[off + 2: off + 4])[0]
+            for i in range(ntab):
+                _pid, _eid, so = struct.unpack(">HHI", data[off + 4 + 8 * i: off + 12 + 8 * i])
+                st = off + so
+                fmt = struct.unpack(">H", data[st: st + 2])[0]
+                if fmt == 4:
+                    segx2 = struct.unpack(">H", data[st + 6: st + 8])[0]
+                    seg = segx2 // 2
+                    ends = struct.unpack(">%dH" % seg, data[st + 14: st + 14 + segx2])
+                    starts = struct.unpack(">%dH" % seg, data[st + 16 + segx2: st + 16 + 2 * segx2])
+                    for s, e in zip(starts, ends):
+                        if s != 0xFFFF:
+                            chars.update(range(s, e + 1))
+                elif fmt == 12:
+                    n = struct.unpack(">I", data[st + 12: st + 16])[0]
+                    for j in range(n):
+                        s, e, _g = struct.unpack(">III", data[st + 16 + 12 * j: st + 28 + 12 * j])
+                        chars.update(range(s, e + 1))
+    except Exception:
+        chars = None
+    _FONT_CHARS[path] = chars
+    return chars
+
+
+def _report_missing(label, text):
+    """prints (once per font and character) the characters of 'text' that the label's font cannot draw: those are the
+    empty boxes (tofu) you see on screen"""
+    try:
+        if len(_REPORTED) > 40:
+            return
+        opts = getattr(label, "options", None) or {}
+        path = opts.get("font_name_r") or opts.get("font_name")
+        if not path or not os.path.exists(str(path)):
+            return
+        have = _font_chars(str(path))
+        if not have:
+            return
+        for ch in set(text):
+            c = ord(ch)
+            if ch in "\n\r\t " or c < 32 or c in have:
+                continue
+            key = (path, c)
+            if key in _REPORTED:
+                continue
+            _REPORTED.add(key)
+            print("[PYVORA] font %s has no glyph for U+%04X (in: %r)" % (os.path.basename(str(path)), c, text[:30]))
+    except Exception:
+        pass
+
+
 def _setup_text(fonts):
     """Arabic on Kivy (its text provider here is Pillow, which can neither join Arabic letters nor reorder them):
     1) the default font becomes Cairo (Latin + Arabic) from assets/tkfonts, the same fonts real tkinter uses
@@ -504,17 +588,7 @@ def _setup_text(fonts):
 
     tag = re.compile(r"(\[/?[A-Za-z]+(?:=[^\]]*)?\]|&bl;|&br;|&amp;)")
 
-    def _get_text(self):
-        t = self._text
-        if not isinstance(t, str):
-            return t
-        found = invisible.findall(t)
-        if found:
-            for ch in set(found):
-                if ch not in _SEEN_INVISIBLE:
-                    _SEEN_INVISIBLE.add(ch)
-                    print("[PYVORA] text had an invisible character U+%04X - removed" % ord(ch))
-            t = invisible.sub("", t)
+    def _shaped(self, t):
         if not arabic_tk.has_rtl(t):
             return t
         if any("\ufb50" <= c <= "\ufdff" or "\ufe70" <= c <= "\ufeff" for c in t):
@@ -535,6 +609,22 @@ def _setup_text(fonts):
             return arabic_tk.shape(t)
         except Exception:
             return t
+
+    def _get_text(self):
+        t = self._text
+        if not isinstance(t, str):
+            return t
+        found = invisible.findall(t)
+        if found:
+            for ch in set(found):
+                if ch not in _SEEN_INVISIBLE:
+                    _SEEN_INVISIBLE.add(ch)
+                    print("[PYVORA] text had an invisible character U+%04X - removed" % ord(ch))
+            t = invisible.sub("", t)
+        res = _shaped(self, t)
+        if any(ord(c) > 0x7f for c in res):
+            _report_missing(self, res)
+        return res
 
     prop = property(_get_text, LabelBase._set_text, doc="Get/Set the text (Arabic shaped on the way out)")
     LabelBase.text = prop
@@ -603,7 +693,12 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
     out = open(outfile, "a", encoding="utf-8")
     sys.stdout = _Out(out)
     sys.stderr = _Out(out)
-    print("[PYVORA] kvrun v3 (proxy init + invisible-character cleanup)")
+    print("[PYVORA] kvrun v4 (jnius proxy debug + missing-glyph report)")
+    try:
+        from PIL import features
+        print("[PYVORA] Pillow raqm=%s freetype=%s" % (features.check("raqm"), features.version("freetype2")))
+    except Exception:
+        pass
     sys.stdin = io.StringIO("")
     sys.argv = [name]
 
