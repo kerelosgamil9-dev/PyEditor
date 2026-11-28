@@ -477,6 +477,9 @@ class _Out:
         return False
 
 
+_SEEN_INVISIBLE = set()
+
+
 def _setup_text(fonts):
     """Arabic on Kivy (its text provider here is Pillow, which can neither join Arabic letters nor reorder them):
     1) the default font becomes Cairo (Latin + Arabic) from assets/tkfonts, the same fonts real tkinter uses
@@ -505,7 +508,12 @@ def _setup_text(fonts):
         t = self._text
         if not isinstance(t, str):
             return t
-        if invisible.search(t):
+        found = invisible.findall(t)
+        if found:
+            for ch in set(found):
+                if ch not in _SEEN_INVISIBLE:
+                    _SEEN_INVISIBLE.add(ch)
+                    print("[PYVORA] text had an invisible character U+%04X - removed" % ord(ch))
             t = invisible.sub("", t)
         if not arabic_tk.has_rtl(t):
             return t
@@ -595,6 +603,7 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
     out = open(outfile, "a", encoding="utf-8")
     sys.stdout = _Out(out)
     sys.stderr = _Out(out)
+    print("[PYVORA] kvrun v3 (proxy init + invisible-character cleanup)")
     sys.stdin = io.StringIO("")
     sys.argv = [name]
 
