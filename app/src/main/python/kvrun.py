@@ -222,25 +222,29 @@ _PROXIES = {}
 
 
 class PythonJavaClass(object):
-    """a Python class that implements Java interfaces (__javainterfaces__ = ["android/view/View$OnClickListener"])"""
+    """a Python class that implements Java interfaces (__javainterfaces__ = ["android/view/View$OnClickListener"]).
+    Chaquopy wants dynamic_proxy(...) FIRST in the bases of such a class, so the real class is built on first use:
+    proxy = (dynamic_proxy(interfaces), the user's class)"""
     __javainterfaces__ = []
     __javacontext__ = "app"
 
     def __new__(cls, *args, **kwargs):
-        if getattr(cls, "_kv_proxy", False):
+        if cls.__dict__.get("_kv_proxy"):          # making an instance of the generated proxy class itself
             return super(PythonJavaClass, cls).__new__(cls)
         proxy = _PROXIES.get(cls)
         if proxy is None:
             ifaces = [jclass(i.replace("/", ".")) for i in cls.__javainterfaces__]
-            proxy = type(cls.__name__, (cls, dynamic_proxy(*ifaces)), {"_kv_proxy": True})
+
+            def _init(self, *a, **k):
+                cls.__init__(self, *a, **k)
+
+            proxy = type(cls.__name__, (dynamic_proxy(*ifaces), cls), {"__init__": _init, "_kv_proxy": True})
             _PROXIES[cls] = proxy
-        return proxy.__new__(proxy, *args, **kwargs)
+        # python then calls __init__(*args) on this object (it is an instance of cls)
+        return proxy.__new__(proxy)
 
     def __init__(self, *args, **kwargs):
-        try:
-            super(PythonJavaClass, self).__init__()
-        except Exception:
-            pass
+        pass
 '''
 
 _EMBEDDED = {}   # module name -> python source (filled in main())
@@ -540,7 +544,10 @@ def ime_changed(height):
                 if not _KB["patched"]:
                     WindowBase._get_android_kheight = lambda self: _KB["h"]
                     _KB["patched"] = True
-                if h > 0 and Window.softinput_mode == "":
+                # "resize" / "scale" expect Android to shrink the drawing surface (it does on Pydroid / python-for-android);
+                # here the surface keeps its size, so they would draw the whole app squeezed under the keyboard.
+                # "below_target" gives the same result for the user: the focused field stays above the keyboard.
+                if h > 0 and Window.softinput_mode in ("", "resize", "scale"):
                     Window.softinput_mode = "below_target"
                 Window.trigger_keyboard_height()
                 if h == 0 and prev > 0:
