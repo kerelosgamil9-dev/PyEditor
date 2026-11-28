@@ -238,25 +238,25 @@ class PythonJavaClass(object):
             base = dynamic_proxy(*ifaces)
 
             def _init(self, *a, **k):
-                if "_kv_inited" in self.__dict__:
-                    return                          # python calls __init__ a second time on the returned object
                 super(proxy, self).__init__()      # Chaquopy: must run before the object is used as a Java object
-                self.__dict__["_kv_inited"] = True
                 if _DEBUG[0] < 3:
                     _DEBUG[0] += 1
                     try:
-                        object.__getattribute__(self, "_chaquopy_this")
-                        ready = True
-                    except AttributeError:
-                        ready = False
-                    print("[PYVORA] jnius proxy %s: java part ready=%s, mro=%s" % (
-                        cls.__name__, ready, [c.__name__ for c in type(self).__mro__]))
+                        try:
+                            object.__getattribute__(self, "_chaquopy_this")
+                            ready = True
+                        except AttributeError:
+                            ready = False
+                        print("[PYVORA] jnius proxy %s: java part ready=%s, mro=%s" % (
+                            cls.__name__, ready, [c.__name__ for c in type(self).__mro__]))
+                    except Exception:
+                        pass
                 cls.__init__(self, *a, **k)
 
             proxy = type(cls.__name__, (base, cls), {"__init__": _init, "_kv_proxy": True})
             _PROXIES[cls] = proxy
-        # a normal instantiation of the proxy class: Chaquopy builds the Java side, then __init__ runs
-        return proxy(*args, **kwargs)
+        # python then calls __init__(*args) on this object (it is an instance of cls)
+        return proxy.__new__(proxy)
 
     def __init__(self, *args, **kwargs):
         pass
@@ -548,6 +548,11 @@ def _report_missing(label, text):
         path = opts.get("font_name_r") or opts.get("font_name")
         if not path or not os.path.exists(str(path)):
             return
+        try:
+            if os.path.getsize(str(path)) > 4 * 1024 * 1024:
+                return
+        except Exception:
+            return
         have = _font_chars(str(path))
         if not have:
             return
@@ -622,8 +627,11 @@ def _setup_text(fonts):
                     print("[PYVORA] text had an invisible character U+%04X - removed" % ord(ch))
             t = invisible.sub("", t)
         res = _shaped(self, t)
-        if any(ord(c) > 0x7f for c in res):
-            _report_missing(self, res)
+        try:
+            if any(ord(c) > 0x7f for c in res):
+                _report_missing(self, res)
+        except Exception:
+            pass
         return res
 
     prop = property(_get_text, LabelBase._set_text, doc="Get/Set the text (Arabic shaped on the way out)")
@@ -693,7 +701,7 @@ def main(codepath, name, wd, pub, libdir, rt, fonts, outfile, act=None):
     out = open(outfile, "a", encoding="utf-8")
     sys.stdout = _Out(out)
     sys.stderr = _Out(out)
-    print("[PYVORA] kvrun v4 (jnius proxy debug + missing-glyph report)")
+    print("[PYVORA] kvrun v5 (safe)")
     try:
         from PIL import features
         print("[PYVORA] Pillow raqm=%s freetype=%s" % (features.check("raqm"), features.version("freetype2")))
